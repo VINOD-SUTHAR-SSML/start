@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scan New Beam</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#1d2330; --muted:#667085; --line:#e3e6eb; --accent:#1f6feb; --ok:#1a7f37; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0f1218; --card:#171b23; --ink:#e6e9ef; --muted:#98a2b3; --line:#2a303b; --accent:#4c8dff; --ok:#3fb950; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.45 system-ui, sans-serif; padding:16px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  p.sub { color:var(--muted); margin:0 0 16px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px,1fr)); gap:16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+  input { flex:1; min-width:90px; padding:8px; border:1px solid var(--line); border-radius:6px; background:transparent; color:var(--ink); }
+  button { padding:8px 12px; border:0; border-radius:6px; background:var(--accent); color:#fff; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--accent); border:1px solid var(--line); }
+  button:disabled { opacity:.45; cursor:default; }
+  .beam { font-family:ui-monospace, monospace; font-size:12px; color:var(--ok); word-break:break-all; min-height:18px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:5px 6px; border-bottom:1px solid var(--line); }
+  th { color:var(--muted); font-weight:600; }
+  td.mono { font-family:ui-monospace, monospace; font-size:11px; }
+  .top { margin-bottom:16px; }
+</style>
+</head>
+<body>
+  <h1>Scan New Beam</h1>
+  <p class="sub">Every form below works on its own. Each user gets their own Beam ID and their own sequence, even when they start at the same moment.</p>
+
+  <div class="card top">
+    <button id="startBoth">Start both users at the same instant</button>
+    <span class="sub" id="sameTs"></span>
+  </div>
+
+  <div class="grid" id="forms"></div>
+
+  <div class="card" style="margin-top:16px">
+    <strong>Saved rows (all users, sorted by Beam ID + Seq)</strong>
+    <table><thead><tr><th>Beam ID</th><th>Seq</th><th>User</th><th>Loom</th><th>Order</th></tr></thead>
+    <tbody id="saved"></tbody></table>
+  </div>
+
+<script src="beam-scan-session.js"></script>
+<script>
+  // Set to your Apps Script Web App URL to get server-serial Beam IDs.
+  var SERVER_URL = '';
+  var allocate = SERVER_URL ? function (o) {
+    return fetch(SERVER_URL, { method:'POST', body: JSON.stringify({ action:'newBeam', userId:o.userId }) })
+      .then(function (r) { return r.json(); }).then(function (j) { return j.beamId; });
+  } : null;
+
+  var savedRows = [];
+
+  // One independent ScanNewBeamForm per user. Nothing shared between them.
+  function ScanNewBeamForm(root, defaultUser) {
+    var session = null;
+    root.innerHTML =
+      '<div class="row"><input class="user" placeholder="User" value="' + defaultUser + '">' +
+      '<button class="start">Scan New Beam</button></div>' +
+      '<div class="beam"></div>' +
+      '<div class="row"><input class="loom" placeholder="Scan loom" disabled>' +
+      '<input class="order" placeholder="Scan order" disabled></div>' +
+      '<div class="row"><button class="add" disabled>Add</button>' +
+      '<button class="ghost undo" disabled>Undo</button>' +
+      '<button class="ghost finish" disabled>Finish &amp; Save</button></div>' +
+      '<table><thead><tr><th>Seq</th><th>Loom</th><th>Order</th><th>Time</th></tr></thead><tbody></tbody></table>';
+    var $ = function (s) { return root.querySelector(s); };
+
+    function render() {
+      var on = !!session;
+      ['.loom','.order','.add','.undo','.finish'].forEach(function (s) { $(s).disabled = !on; });
+      $('.beam').textContent = on ? 'BEAM ID: ' + session.beamId : '';
+      $('tbody').innerHTML = on ? session.rows().map(function (r) {
+        return '<tr><td>' + r.seq + '</td><td>' + esc(r.loom) + '</td><td>' + esc(r.order) +
+               '</td><td class="mono">' + r.scannedAt.slice(11, 23) + '</td></tr>';
+      }).join('') : '';
+    }
+
+    this.start = async function (now) {
+      if (session && session.count() && !confirm('Discard the unfinished beam ' + session.beamId + '?')) return;
+      if (session) session.cancel();
+      session = await BeamScanSession.start({ userId: $('.user').value, now: now, allocate: allocate });
+      render();
+      $('.loom').focus();
+      return session;
+    };
+
+    function add() {
+      var loom = $('.loom').value.trim(), order = $('.order').value.trim();
+      if (!loom || !order) return;
+      session.addScan({ loom: loom, order: order });
+      $('.loom').value = $('.order').value = '';
+      $('.loom').focus();
+      render();
+    }
+
+    $('.start').onclick = function () { this.start(); }.bind(this);
+    $('.add').onclick = add;
+    $('.order').onkeydown = function (e) { if (e.key === 'Enter') add(); };
+    $('.loom').onkeydown = function (e) { if (e.key === 'Enter') $('.order').focus(); };
+    $('.undo').onclick = function () { session.undoLast(); render(); };
+    $('.finish').onclick = function () {
+      if (!session.count()) return;
+      var payload = session.finish();
+      if (SERVER_URL) fetch(SERVER_URL, { method:'POST', body: JSON.stringify({ action:'saveBeam', payload: payload }) });
+      payload.rows.forEach(function (r) { savedRows.push(r); });
+      session = null;
+      render(); renderSaved();
+    };
+    render();
+  }
+
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]; }); }
+
+  function renderSaved() {
+    document.getElementById('saved').innerHTML = BeamScanSession.sortRows(savedRows).map(function (r) {
+      return '<tr><td class="mono">' + r.beamId + '</td><td>' + r.seq + '</td><td>' + esc(r.userId) +
+             '</td><td>' + esc(r.loom) + '</td><td>' + esc(r.order) + '</td></tr>';
+    }).join('');
+  }
+
+  var forms = ['USER1', 'USER2'].map(function (u) {
+    var el = document.createElement('div');
+    el.className = 'card';
+    document.getElementById('forms').appendChild(el);
+    return new ScanNewBeamForm(el, u);
+  });
+
+  document.getElementById('startBoth').onclick = async function () {
+    var now = new Date(); // identical timestamp for both users
+    await Promise.all(forms.map(function (f) { return f.start(now); }));
+    document.getElementById('sameTs').textContent = '  Both started at ' + now.toISOString() + '. Beam IDs are still different.';
+  };
+</script>
+</body>
+</html>
