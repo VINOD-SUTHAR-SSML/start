@@ -1,0 +1,3476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#1b2430">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SSML Weaving">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://unpkg.com/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+<title>SSML Weaving</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1b2430;
+    --ink-soft:#4a5568;
+    --canvas:#f2efe6;
+    --panel:#ffffff;
+    --gold:#c68a2e;
+    --gold-deep:#a06f1f;
+    --teal:#2f6f62;
+    --teal-soft:#e4efec;
+    --rust:#b5652f;
+    --rust-soft:#f7ece1;
+    --indigo:#3b5bab;
+    --indigo-soft:#e7ecf7;
+    --red:#b23b30;
+    --red-soft:#f7e6e3;
+    --line:#ddd7c6;
+    --line-soft:#eae6d8;
+    --shadow: 0 1px 2px rgba(27,36,48,.06), 0 6px 16px rgba(27,36,48,.06);
+    /* plant theme — overridden per plant via JS, this is the default (Saily) */
+    --accent:#c68a2e;
+    --accent-deep:#a06f1f;
+    --accent-soft:#fbf3e4;
+    --accent-rgb:198,138,46;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:var(--canvas);
+    color:var(--ink);
+    font-family:'Inter',system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    overscroll-behavior-y:none;
+  }
+  h1,h2,h3{font-family:'Space Grotesk',sans-serif; margin:0; letter-spacing:-0.01em;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  button{font-family:inherit; cursor:pointer;}
+  input,select{font-family:inherit;}
+
+  #app{max-width:640px; margin:0 auto; min-height:100%; display:flex; flex-direction:column; background:var(--canvas);}
+  @media(min-width:900px){ #app{max-width:920px;} }
+  /* wide = full-page reports: edge-to-edge at every screen size */
+  #app.wide{max-width:100%;}
+  #app.wide main{max-width:none; width:100%; padding-left:20px; padding-right:20px;}
+  #app.wide .table-wrap{max-height:max(320px, calc(100vh - 300px));}
+  #app.wide .gantt-scroll{max-height:max(320px, calc(100vh - 270px));}
+
+  /* sticky header block (top bar + report tabs) */
+  .sticky-head{position:sticky; top:0; z-index:30;}
+  .sticky-head .topbar{position:static;}
+  .report-tabs{
+    display:flex; gap:6px; overflow-x:auto; padding:8px 14px; background:#fff;
+    border-bottom:1px solid var(--line); scrollbar-width:thin; -webkit-overflow-scrolling:touch;
+  }
+  .rtab{
+    flex-shrink:0; border:1.5px solid var(--line); background:#fbfaf6; color:var(--ink-soft);
+    padding:8px 14px; border-radius:999px; font-size:12.5px; font-weight:600; white-space:nowrap;
+  }
+  .rtab:hover{border-color:var(--accent); color:var(--ink);}
+  .rtab.active{background:var(--accent); border-color:var(--accent); color:#fff;}
+  .rtab.warp.active{background:var(--teal); border-color:var(--teal);}
+
+  /* Top bar */
+  .topbar{
+    position:sticky; top:0; z-index:20;
+    background:var(--ink); color:#fff;
+    padding:14px 16px calc(14px + env(safe-area-inset-top,0px));
+    padding-top:calc(14px + env(safe-area-inset-top,0px));
+    display:flex; align-items:center; gap:12px;
+  }
+  .topbar .back{
+    background:rgba(255,255,255,.1); border:none; color:#fff; width:34px; height:34px;
+    border-radius:8px; font-size:18px; display:flex; align-items:center; justify-content:center;
+    flex-shrink:0;
+  }
+  .topbar .titles{flex:1; min-width:0;}
+  .topbar{border-bottom:3px solid var(--accent);}
+  .topbar .brand{font-size:11px; letter-spacing:.14em; color:var(--accent); font-weight:600; text-transform:uppercase;}
+  .topbar .brand .ver{color:#8b95a3; letter-spacing:.02em; font-weight:500; text-transform:none; margin-left:6px;}
+  .topbar h1{font-size:19px; font-weight:600; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .topbar-actions{display:flex; align-items:center; gap:8px; flex-shrink:0;}
+  .topbar .gearbtn{
+    background:rgba(255,255,255,.1); border:none; color:#cfd6df; width:34px; height:34px;
+    border-radius:8px; display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .topbar .userchip{
+    font-size:11px; color:#cfd6df; background:rgba(255,255,255,.08);
+    padding:6px 10px; border-radius:999px; flex-shrink:0; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    border:none; text-align:left;
+  }
+
+  main{flex:1; padding:16px 16px 40px;}
+
+  /* Home / plant hero */
+  .home-hero{padding:6px 2px 18px;}
+  .home-hero .eyebrow{font-size:11px; letter-spacing:.14em; color:var(--gold-deep); text-transform:uppercase; font-weight:600;}
+  .home-hero h1{font-size:28px; margin-top:6px; line-height:1.15;}
+  .home-hero p{color:var(--ink-soft); font-size:14.5px; margin-top:8px; line-height:1.5;}
+
+  .menu-grid{display:grid; grid-template-columns:1fr; gap:14px;}
+  @media(min-width:560px){.menu-grid{grid-template-columns:1fr 1fr;}}
+  @media(min-width:860px){.menu-grid.cols-3{grid-template-columns:1fr 1fr 1fr;}}
+
+  .menu-card{
+    background:var(--panel); border:1px solid var(--line); border-radius:18px;
+    padding:22px 20px; text-align:left; position:relative; overflow:hidden;
+    box-shadow:var(--shadow); min-height:150px; display:flex; flex-direction:column; justify-content:space-between;
+  }
+  .menu-card .tag{font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-soft); font-weight:600;}
+  .menu-card h2{font-size:24px; margin-top:6px;}
+  .menu-card .count{margin-top:14px; font-size:13px; color:var(--ink-soft);}
+  .menu-card .count b{color:var(--ink); font-family:'IBM Plex Mono',monospace;}
+  .menu-card::after{
+    content:''; position:absolute; right:-30px; bottom:-30px; width:110px; height:110px; border-radius:50%;
+    background:var(--accent); opacity:.10;
+  }
+  .menu-card.warp::after{background:var(--teal);}
+  .menu-card.plant-SAILY::after{background:var(--gold);}
+  .menu-card.plant-J177::after{background:var(--indigo);}
+  .menu-card.plant-E125::after{background:var(--rust);}
+  .menu-card .rangebits{margin-top:12px; display:flex; flex-wrap:wrap; gap:6px;}
+  .menu-card .rangebits span{
+    font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--ink-soft);
+    background:#f7f4ea; border:1px solid var(--line-soft); border-radius:6px; padding:3px 7px;
+  }
+
+  /* Submenu list */
+  .list{display:flex; flex-direction:column; gap:10px;}
+  .list-item{
+    background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    padding:16px 16px; display:flex; align-items:center; gap:14px; text-align:left;
+    box-shadow:var(--shadow); border-left:4px solid var(--accent);
+  }
+  .list-item.warp{border-left-color:var(--teal);}
+  .list-item .letter{
+    font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:13px; color:var(--accent-deep);
+    background:var(--accent-soft); border-radius:8px; width:30px; height:30px; display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .list-item.warp .letter{color:var(--teal); background:var(--teal-soft);}
+  .list-item .txt{flex:1;}
+  .list-item .txt .title{font-weight:600; font-size:15px;}
+  .list-item .txt .sub{font-size:12.5px; color:var(--ink-soft); margin-top:2px;}
+  .list-item .chev{color:#c7c1ac; font-size:18px;}
+
+  /* Form */
+  .card{
+    background:var(--panel); border:1px solid var(--line); border-radius:16px;
+    padding:18px; box-shadow:var(--shadow); margin-bottom:14px;
+  }
+  .card h3{font-size:16px; margin-bottom:4px;}
+  .card .desc{font-size:13px; color:var(--ink-soft); margin-bottom:14px; line-height:1.5;}
+  .field{margin-bottom:14px;}
+  .field label{
+    display:block; font-size:12px; font-weight:600; color:var(--ink-soft);
+    margin-bottom:6px; letter-spacing:.02em;
+  }
+  .field .hint{font-size:11.5px; color:#9a917a; margin-top:5px;}
+  .field .err{font-size:12px; color:var(--red); margin-top:5px; font-weight:500;}
+  .scan-input{
+    width:100%; padding:13px 14px; border-radius:10px; border:1.5px solid var(--line);
+    font-family:'IBM Plex Mono',monospace; font-size:16px; background:#fbfaf6; color:var(--ink);
+    letter-spacing:.02em;
+  }
+  .scan-input:focus{outline:none; border-color:var(--accent); background:#fff; box-shadow:0 0 0 3px rgba(var(--accent-rgb),.15);}
+  .scan-input.bad{border-color:var(--red); background:var(--red-soft);}
+  .scan-input.locked{background:#ece9de; color:#8a8471; border-color:var(--line);}
+  .text-input{
+    width:100%; padding:13px 14px; border-radius:10px; border:1.5px solid var(--line);
+    font-size:15px; background:#fbfaf6; color:var(--ink); font-family:inherit;
+  }
+  .text-input:focus{outline:none; border-color:var(--accent); background:#fff; box-shadow:0 0 0 3px rgba(var(--accent-rgb),.15);}
+
+  .field-with-scan{display:flex; gap:8px; align-items:stretch;}
+  .field-with-scan .scan-input{flex:1;}
+  .scan-btn{
+    width:48px; flex-shrink:0; border:none; border-radius:10px; background:var(--ink); color:#fff;
+    display:flex; align-items:center; justify-content:center; font-size:19px;
+  }
+  .scan-btn:active{background:#0f151d;}
+  .scan-region{width:100%; min-height:230px; border-radius:12px; overflow:hidden; background:#000;}
+  .scan-region video{width:100%; display:block;}
+
+  .seg{display:flex; gap:8px; flex-wrap:wrap;}
+  .seg button{
+    flex:1; min-width:80px; padding:12px 10px; border-radius:10px; border:1.5px solid var(--line);
+    background:#fbfaf6; font-size:13.5px; font-weight:600; color:var(--ink-soft);
+  }
+  .seg button.active{background:var(--ink); border-color:var(--ink); color:#fff;}
+
+  .dt-row{display:flex; gap:8px; align-items:center;}
+  .dt-row .text-input{flex:1;}
+  .dt-toggle{
+    padding:12px 12px; border-radius:10px; border:1.5px solid var(--line); background:#fbfaf6;
+    font-size:12px; font-weight:600; color:var(--ink-soft); white-space:nowrap;
+  }
+  .dt-toggle.active{background:var(--teal-soft); border-color:var(--teal); color:var(--teal);}
+
+  .btn{
+    width:100%; padding:14px; border-radius:12px; border:none; font-weight:600; font-size:15px;
+    display:flex; align-items:center; justify-content:center; gap:8px;
+  }
+  .btn-primary{background:var(--ink); color:#fff;}
+  .btn-primary:active{background:#0f151d;}
+  .btn-gold{background:var(--gold); color:#fff;}
+  .btn-outline{background:#fff; color:var(--ink); border:1.5px solid var(--line);}
+  .btn-teal{background:var(--teal); color:#fff;}
+  .btn-sm{width:auto; padding:8px 14px; font-size:12.5px; border-radius:8px;}
+  .btn-row{display:flex; gap:10px; margin-top:4px;}
+  .btn-row .btn{flex:1;}
+
+  .beam-banner{
+    background:var(--ink); color:#fff; border-radius:14px; padding:16px 18px; margin-bottom:16px;
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+  }
+  .beam-banner .lbl{font-size:11px; letter-spacing:.1em; color:#b9c2cd; text-transform:uppercase; font-weight:600;}
+  .beam-banner .id{font-family:'IBM Plex Mono',monospace; font-size:20px; font-weight:600; color:var(--accent); margin-top:2px;}
+  .beam-banner .seqchip{background:rgba(255,255,255,.12); padding:6px 12px; border-radius:999px; font-family:'IBM Plex Mono',monospace; font-size:13px;}
+
+  .entry-row{
+    display:flex; justify-content:space-between; align-items:center; padding:10px 0;
+    border-bottom:1px solid var(--line-soft); font-size:13.5px;
+  }
+  .entry-row:last-child{border-bottom:none;}
+  .entry-row .l{color:var(--ink-soft);}
+  .entry-row .r{font-family:'IBM Plex Mono',monospace; font-weight:600;}
+
+  /* Status pill */
+  .pill{display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:600; padding:4px 10px; border-radius:999px;}
+  .pill-run{background:var(--teal-soft); color:var(--teal);}
+  .pill-run::before{content:''; width:6px; height:6px; border-radius:50%; background:var(--teal);}
+  .pill-done{background:#eee; color:#7a7a7a;}
+  .pill-done::before{content:''; width:6px; height:6px; border-radius:50%; background:#aaa;}
+  .pill-open{background:var(--accent-soft); color:var(--accent-deep);}
+  .pill-open::before{content:''; width:6px; height:6px; border-radius:50%; background:var(--accent);}
+
+  /* Data table — professional data-grid treatment, not a spreadsheet dump */
+  .report-card{background:#fff; border:1px solid var(--line); border-radius:14px; overflow:hidden; box-shadow:var(--shadow);}
+  .report-toolbar{display:flex; gap:8px; padding:12px; border-bottom:1px solid var(--line-soft); background:#fbfaf6;}
+  .report-search{flex:1; width:auto; padding:10px 13px; border-radius:9px; border:1.5px solid var(--line); background:#fff; font-size:13.5px; font-family:inherit;}
+  .report-search:focus{outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(var(--accent-rgb),.15);}
+  .report-toolbar .icobtn{
+    flex-shrink:0; width:42px; border:1.5px solid var(--line); border-radius:9px; background:#fff; color:var(--ink-soft);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .report-toolbar .icobtn:hover{border-color:var(--accent); color:var(--accent-deep);}
+  .report-toolbar .icobtn.active{background:var(--accent-soft); border-color:var(--accent); color:var(--accent-deep);}
+  .date-filter-chip{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:8px 14px; background:var(--accent-soft); color:var(--accent-deep); font-size:12.5px; font-weight:600;
+    border-bottom:1px solid var(--line-soft);
+  }
+  .date-filter-chip svg{vertical-align:-3px; margin-right:2px;}
+  .date-filter-chip button{background:none; border:none; color:var(--accent-deep); font-size:14px; cursor:pointer; padding:2px 4px;}
+  .report-toolbar .icobtn:active{background:var(--line-soft);}
+  .report-count{font-size:11.5px; color:var(--ink-soft); padding:8px 14px; border-top:1px solid var(--line-soft); background:#fbfaf6;}
+  .colcheck-list{display:flex; flex-direction:column; gap:0; max-height:48vh; overflow-y:auto; margin:6px 0; border:1px solid var(--line-soft); border-radius:10px;}
+  .colcheck-row{display:flex; align-items:center; gap:10px; padding:10px 12px; border-bottom:1px solid var(--line-soft); font-size:14px;}
+  .colcheck-row:last-child{border-bottom:none;}
+  .colcheck-row input{width:18px; height:18px; accent-color:var(--accent); flex-shrink:0;}
+  .colmove{
+    width:26px; height:26px; flex-shrink:0; border:1px solid var(--line); border-radius:6px; background:#fff;
+    color:var(--ink-soft); font-size:10px; display:flex; align-items:center; justify-content:center;
+  }
+  .colmove:disabled{opacity:.3;}
+  .colmove:not(:disabled):hover{border-color:var(--accent); color:var(--accent-deep);}
+  th input[type="checkbox"], td input.rowselect{width:16px; height:16px; accent-color:var(--accent);}
+
+  .table-wrap{overflow:auto; max-height:min(calc(100vh - 240px), 900px);}
+  table{border-collapse:separate; border-spacing:0; width:100%; font-size:13px;}
+  th{
+    position:sticky; top:0; z-index:2;
+    text-align:left; padding:9px 14px; background:#fbfaf6; color:var(--ink-soft);
+    font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; font-weight:700; white-space:nowrap;
+    border-bottom:1.5px solid var(--line);
+  }
+  th:first-child{left:0; z-index:3;}
+  td:first-child{position:sticky; left:0; z-index:1; background:#fff; box-shadow:1px 0 0 var(--line-soft);}
+  th.sortable{cursor:pointer; user-select:none;}
+  th.sortable:hover{color:var(--ink); background:#f5f2e6;}
+  th.sortable.active{color:var(--accent-deep);}
+  th .sort-ic{margin-left:4px; opacity:.55; display:inline-flex; vertical-align:-2px;}
+  th.sortable.active .sort-ic{opacity:1;}
+  th.num{text-align:right;}
+  td{padding:8px 14px; border-bottom:1px solid var(--line-soft); white-space:nowrap; font-size:13px; color:var(--ink); font-family:'Inter',system-ui,sans-serif;}
+  td.mono{font-family:'IBM Plex Mono',monospace; font-size:12.5px;}
+  td.num{text-align:right; font-family:'IBM Plex Mono',monospace; font-size:12.5px; font-variant-numeric:tabular-nums;}
+  tbody tr:hover td{background:#fbfaf6;}
+  tr:last-child td{border-bottom:none;}
+
+  .empty{
+    text-align:center; padding:50px 20px; color:var(--ink-soft);
+  }
+  .empty .ic{font-size:34px; margin-bottom:10px;}
+  .empty .t{font-weight:600; color:var(--ink); font-size:15px; margin-bottom:5px;}
+  .empty .s{font-size:13px; max-width:280px; margin:0 auto; line-height:1.5;}
+
+  .stat-row{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:16px;}
+  .stat{background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px; text-align:center;}
+  .stat .n{font-family:'IBM Plex Mono',monospace; font-size:20px; font-weight:600;}
+  .stat .l{font-size:10.5px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.06em; margin-top:2px;}
+
+  .toast{
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+    background:var(--ink); color:#fff; padding:12px 20px; border-radius:999px; font-size:13.5px;
+    box-shadow:0 8px 24px rgba(0,0,0,.25); z-index:100; opacity:0; transition:opacity .2s, transform .2s;
+    display:flex; align-items:center; gap:8px; max-width:90%;
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(-6px);}
+  .toast.err{background:var(--red);}
+  .toast .dot{width:7px; height:7px; border-radius:50%; background:var(--gold); flex-shrink:0;}
+  .toast.err .dot{background:#fff;}
+
+  .modal-bg{
+    position:fixed; inset:0; background:rgba(27,36,48,.55); z-index:200;
+    display:flex; align-items:flex-end; justify-content:center;
+  }
+  @media(min-width:520px){.modal-bg{align-items:center;}}
+  .modal{
+    background:#fff; border-radius:20px 20px 0 0; padding:22px; width:100%; max-width:480px;
+  }
+  @media(min-width:520px){.modal{border-radius:18px;}}
+  .modal h3{font-size:17px; margin-bottom:6px;}
+  .modal p{font-size:13.5px; color:var(--ink-soft); margin-bottom:16px; line-height:1.5;}
+
+  .note{
+    background:var(--teal-soft); border:1px solid #cfe4de; color:#20524a; font-size:12.5px;
+    padding:10px 12px; border-radius:10px; margin-bottom:14px; line-height:1.5;
+  }
+
+  .ms-advanced{display:none; margin-top:14px; padding-top:14px; border-top:1px solid var(--line-soft);}
+  .ms-advanced.open{display:block;}
+
+  .gantt-legend{display:flex; gap:16px; flex-wrap:wrap; margin-bottom:14px; font-size:12.5px; color:var(--ink-soft);}
+  .gantt-legend span{display:inline-flex; align-items:center; gap:6px;}
+  .gantt-legend i{width:12px; height:12px; border-radius:3px; display:inline-block;}
+  .gantt-scroll{overflow:auto; border:1px solid var(--line); border-radius:14px; background:#fff; max-height:min(70vh,720px);}
+  .gantt-header-row{display:flex; position:sticky; top:0; z-index:3; background:#fbfaf6;}
+  .gantt-corner{position:sticky; left:0; z-index:4; background:#fbfaf6; border-bottom:1.5px solid var(--line); border-right:1px solid var(--line-soft); flex-shrink:0;}
+  .gantt-days{display:flex; border-bottom:1.5px solid var(--line);}
+  .gantt-daycell{flex-shrink:0; border-right:1px solid var(--line-soft); font-size:10.5px; color:var(--ink-soft); text-align:center; padding:8px 2px; text-transform:uppercase; letter-spacing:.04em; font-weight:700;}
+  .gantt-row{display:flex; border-bottom:1px solid var(--line-soft);}
+  .gantt-row:last-child{border-bottom:none;}
+  .gantt-loom-label{position:sticky; left:0; z-index:2; background:#fff; border-right:1px solid var(--line-soft); flex-shrink:0; display:flex; align-items:center; padding:0 14px; font-family:'IBM Plex Mono',monospace; font-size:12.5px; font-weight:600;}
+  .gantt-track{position:relative; flex-shrink:0; height:38px;}
+  .gantt-bar{
+    position:absolute; top:6px; height:26px; border-radius:6px; overflow:hidden;
+    color:#fff; font-size:11px; font-weight:600; display:flex; align-items:center; padding:0 8px;
+    white-space:nowrap; cursor:default; box-shadow:0 1px 2px rgba(0,0,0,.15);
+  }
+  .gantt-today{position:absolute; top:0; bottom:0; width:2px; background:var(--red); z-index:1;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast" class="toast"><span class="dot"></span><span id="toastText"></span></div>
+
+<script>
+/* =========================================================
+   SSML WEAVING — multi-plant weaving & warping follow-up
+   Single-file app. Data persists in the browser (per device),
+   scoped separately per production plant.
+   ========================================================= */
+const APP_VERSION = 'v3.10.0';
+
+/* ---------- plant configuration ---------- */
+const PLANTS = {
+  SAILY: {
+    label: 'Saily',
+    warpRange: [95000001, 95999999],
+    loomRanges: [[201,248],[301,364]],
+    greyRange: [55000001, 55999999]
+  },
+  J177: {
+    label: 'J-177',
+    warpRange: [30000001, 30999999],
+    loomRanges: [[101,126],[201,224],[301,326],[401,426],[501,526],[601,626],[701,726]],
+    greyRange: [35000001, 35999999]
+  },
+  E125: {
+    label: 'E-125',
+    warpRange: [40000001, 40999999],
+    loomRanges: [[701,772],[901,978]],
+    greyRange: [45000001, 45999999]
+  }
+};
+let currentPlant = null;
+
+/* ---------- loom type (make) by loom number range ---------- */
+const LOOM_TYPE_RANGES = {
+  SAILY: [ {min:201, max:248, type:'AIRJET'}, {min:301, max:364, type:'PICANOL'} ],
+  J177:  [ {min:101, max:726, type:'PICANOL'} ], // every J-177 loom range falls within this span
+  E125:  [ {min:701, max:772, type:'SOMET'}, {min:901, max:978, type:'AIRJET'} ],
+};
+function getLoomType(plant, loomNo){
+  const n = parseFloat(loomNo);
+  if(isNaN(n)) return '—';
+  const ranges = LOOM_TYPE_RANGES[plant] || [];
+  const found = ranges.find(r => n>=r.min && n<=r.max);
+  return found ? found.type : '—';
+}
+
+/* ---------- per-plant visual theme ----------
+   Gives each plant its own accent color so operators get an instant
+   glance-cue for which plant they're working in. Weaving screens use
+   the plant accent; Warping keeps its fixed teal regardless of plant,
+   so the two workflow types stay visually distinct within any plant. */
+const THEMES = {
+  SAILY: { accent:'#c68a2e', accentDeep:'#a06f1f', accentSoft:'#fbf3e4', accentRgb:'198,138,46' }, // gold
+  J177:  { accent:'#3b5bab', accentDeep:'#2c4483', accentSoft:'#e7ecf7', accentRgb:'59,91,171'   }, // indigo
+  E125:  { accent:'#b5652f', accentDeep:'#8f4d22', accentSoft:'#f7ece1', accentRgb:'181,101,47'  }  // rust
+};
+function applyTheme(plant){
+  const t = (plant && THEMES[plant]) ? THEMES[plant] : THEMES.SAILY;
+  const app = document.getElementById('app');
+  app.style.setProperty('--accent', t.accent);
+  app.style.setProperty('--accent-deep', t.accentDeep);
+  app.style.setProperty('--accent-soft', t.accentSoft);
+  app.style.setProperty('--accent-rgb', t.accentRgb);
+}
+
+/* ---------- Firestore (shared, multi-device/multi-user) backend ----------
+   Everything flagged shared:true (scans, counters, SAP settings) needs to
+   be visible to every phone/desktop in the plant at once — not just the
+   device that wrote it. When a Firebase project ID is configured (Settings
+   ⚙), shared reads/writes go to Google Cloud Firestore over its plain REST
+   API (no SDK, no build step — just fetch()), so this stays a single
+   static HTML file. With no project ID configured, shared storage quietly
+   falls back to window.storage (Claude artifact preview) or this browser's
+   own localStorage, exactly as before this feature existed — single-device
+   mode keeps working with zero setup.
+
+   Why Firestore and not another "shared backend": a Google Sheet was
+   considered and explicitly ruled out (sheet writes aren't atomic without
+   an external lock service, and a live sheet under constant small writes
+   from several phones is slow and gets fragile fast). Firestore gives a
+   genuinely atomic server-side counter (see fsNextId below) and typical
+   write latency in the ~100-300ms range, which is what "two operators tap
+   Scan at the same instant" actually needs. */
+function getFirebaseProjectId(){
+  try { return localStorage.getItem('ssml_firebase_pid') || ''; } catch(e){ return ''; }
+}
+function setFirebaseProjectIdSync(v){
+  try {
+    if (v) localStorage.setItem('ssml_firebase_pid', v);
+    else localStorage.removeItem('ssml_firebase_pid');
+  } catch(e){}
+}
+function fsBase(pid){
+  return `https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents`;
+}
+// Firestore documents are field/value maps; this app only ever stores one
+// plain string per key (same shape localStorage already used), so every
+// document is just { fields: { v: { stringValue: "..." } } }.
+function fsEncode(value){ return { fields: { v: { stringValue: String(value) } } }; }
+function fsDecode(doc){ try { return doc.fields.v.stringValue; } catch(e){ return null; } }
+// Firestore document IDs can't contain '/', and our keys look like
+// "SAILY:counter:beam" or "SAILY:beamentry:...", so each key is
+// URL-encoded into a single path segment.
+function fsDocId(key){ return encodeURIComponent(key); }
+async function fsGet(pid, key){
+  try {
+    const res = await fetch(`${fsBase(pid)}/kv/${fsDocId(key)}`);
+    if (res.status === 404) return null;
+    if (!res.ok) return null;
+    const doc = await res.json();
+    const value = fsDecode(doc);
+    return value !== null ? {key, value, shared:true} : null;
+  } catch(e){ return null; }
+}
+async function fsSet(pid, key, value){
+  try {
+    const res = await fetch(`${fsBase(pid)}/kv/${fsDocId(key)}?updateMask.fieldPaths=v`, {
+      method:'PATCH',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(fsEncode(value))
+    });
+    if (!res.ok) return null;
+    return {key, value, shared:true};
+  } catch(e){ return null; }
+}
+async function fsDelete(pid, key){
+  try {
+    const res = await fetch(`${fsBase(pid)}/kv/${fsDocId(key)}`, { method:'DELETE' });
+    if (!res.ok && res.status !== 404) return null;
+    return {key, deleted:true, shared:true};
+  } catch(e){ return null; }
+}
+async function fsList(pid, prefix){
+  // "Starts with" range query bounded by the prefix and the 
+  // high-Unicode sentinel — the standard Firestore trick for a prefix
+  // scan — run against the document's own name (__name__) so it works
+  // no matter what fields a document holds.
+  try {
+    const docRoot = `projects/${pid}/databases/(default)/documents/kv`;
+    const body = {
+      structuredQuery: {
+        from: [{ collectionId: 'kv' }],
+        where: { compositeFilter: { op:'AND', filters: [
+          { fieldFilter: { field:{fieldPath:'__name__'}, op:'GREATER_THAN_OR_EQUAL', value:{referenceValue:`${docRoot}/${fsDocId(prefix)}`} } },
+          { fieldFilter: { field:{fieldPath:'__name__'}, op:'LESS_THAN', value:{referenceValue:`${docRoot}/${fsDocId(prefix)}`} } }
+        ]}},
+        limit: 2000
+      }
+    };
+    const res = await fetch(`${fsBase(pid)}:runQuery`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    if (!res.ok) return {keys:[]};
+    const rows = await res.json();
+    const keys = (Array.isArray(rows) ? rows : []).filter(r=>r.document).map(r => decodeURIComponent(r.document.name.split('/').pop()));
+    return {keys};
+  } catch(e){ return {keys:[]}; }
+}
+/* Atomic ID counter via Firestore's native "increment" field transform,
+   sent through :commit. This is a true server-side atomic add — Firestore
+   itself serializes two simultaneous increments on the same counter
+   document, so two phones tapping "Scan new beam" in the same plant at
+   the exact same millisecond are still guaranteed two different numbers
+   back; there is no read-then-write race window on the client at all
+   (unlike the old "read count, write count+1" local counter, which is
+   exactly what could collide between two devices). The transform also
+   creates the counter document (starting from 0) the first time it's used
+   — no separate "initialize the counter" step needed. */
+async function fsNextId(pid, key){
+  try {
+    const path = `projects/${pid}/databases/(default)/documents/counters/${fsDocId(key)}`;
+    const body = { writes: [{ transform: { document: path, fieldTransforms: [{ fieldPath:'n', increment:{ integerValue:'1' } }] } }] };
+    const res = await fetch(`${fsBase(pid)}:commit`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    if (!res.ok) return null;
+    const out = await res.json();
+    const n = out?.writeResults?.[0]?.transformResults?.[0]?.integerValue;
+    return n !== undefined ? parseInt(n,10) : null;
+  } catch(e){ return null; }
+}
+
+/* ---------- storage abstraction ----------
+   shared:true  -> Firestore when a project ID is configured (multi-device,
+                   multi-user — scans, counters, SAP settings), else
+                   window.storage/localStorage as a single-device fallback.
+   shared:false -> always this device's own window.storage/localStorage.
+                   Used for per-operator state (current user, in-progress
+                   scan session) that should NOT sync across devices —
+                   each phone belongs to one operator at a time, so this
+                   is what already keeps one operator's in-progress
+                   sequence numbering (1,2,3…) from ever being visible to,
+                   let alone colliding with, another operator's. */
+const Storage = {
+  async get(key, shared=true){
+    const pid = shared ? getFirebaseProjectId() : '';
+    if (pid) { const r = await fsGet(pid, key); if (r !== null) return r; }
+    if (window.storage) { try { return await window.storage.get(key, shared); } catch(e){ return null; } }
+    try { const v = localStorage.getItem(key); return v!==null ? {key,value:v,shared} : null; } catch(e){ return null; }
+  },
+  async set(key, value, shared=true){
+    const pid = shared ? getFirebaseProjectId() : '';
+    if (pid) { const r = await fsSet(pid, key, value); if (r !== null) return r; }
+    if (window.storage) { try { return await window.storage.set(key, value, shared); } catch(e){ return null; } }
+    try { localStorage.setItem(key, value); return {key,value,shared}; } catch(e){ return null; }
+  },
+  async delete(key, shared=true){
+    const pid = shared ? getFirebaseProjectId() : '';
+    if (pid) { const r = await fsDelete(pid, key); if (r !== null) return r; }
+    if (window.storage) { try { return await window.storage.delete(key, shared); } catch(e){ return null; } }
+    try { localStorage.removeItem(key); return {key,deleted:true,shared}; } catch(e){ return null; }
+  },
+  async list(prefix='', shared=true){
+    const pid = shared ? getFirebaseProjectId() : '';
+    if (pid) { return await fsList(pid, prefix); }
+    if (window.storage) { try { return await window.storage.list(prefix, shared); } catch(e){ return {keys:[]}; } }
+    try { const keys = Object.keys(localStorage).filter(k=>k.startsWith(prefix)); return {keys}; } catch(e){ return {keys:[]}; }
+  }
+};
+
+function pad5(n){ return String(n).padStart(5,'0'); }
+const SCAN_ICON = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8V6a2 2 0 0 1 2-2h2"/><path d="M17 4h2a2 2 0 0 1 2 2v2"/><path d="M21 16v2a2 2 0 0 1-2 2h-2"/><path d="M7 20H5a2 2 0 0 1-2-2v-2"/><line x1="4" y1="12" x2="20" y2="12"/></svg>`;
+const GEAR_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
+const HOME_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/></svg>`;
+const NAV_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>`;
+const TRASH_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`;
+function nowStamp(){
+  const d = new Date();
+  const p = n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function fmtDT(v){
+  if(!v) return '—';
+  const [datePart, timePart] = v.split('T');
+  if(!datePart) return v;
+  const [y,m,d] = datePart.split('-');
+  if(!y || !m || !d) return v;
+  const dmy = `${d}-${m}-${y.slice(-2)}`;
+  return timePart ? `${dmy} ${timePart}` : dmy;
+}
+
+/* ---------- date math (local, no-seconds "datetime-local" strings) ---------- */
+function parseLocalDT(s){
+  if(!s) return null;
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+function formatLocalDT(d){
+  const p = n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function addMinutesToDT(s, minutes){
+  const d = parseLocalDT(s);
+  if(!d || !isFinite(minutes)) return null;
+  d.setMinutes(d.getMinutes() + Math.round(minutes));
+  return formatLocalDT(d);
+}
+function startOfDay(d){ const x=new Date(d); x.setHours(0,0,0,0); return x; }
+function endOfDay(d){ const x=new Date(d); x.setHours(23,59,59,999); return x; }
+function addDays(d,n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
+function toDateInputValue(d){ const p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; }
+function datePreset(name){
+  const now = new Date();
+  if(name==='today') return {from:startOfDay(now), to:endOfDay(now)};
+  if(name==='tomorrow'){ const t=addDays(now,1); return {from:startOfDay(t), to:endOfDay(t)}; }
+  if(name==='next7') return {from:startOfDay(now), to:endOfDay(addDays(now,6))};
+  if(name==='thisweek'){
+    const day = now.getDay();
+    const monday = addDays(now, day===0?-6:1-day);
+    return {from:startOfDay(monday), to:endOfDay(addDays(monday,6))};
+  }
+  if(name==='thismonth'){
+    const first = new Date(now.getFullYear(), now.getMonth(), 1);
+    const last = new Date(now.getFullYear(), now.getMonth()+1, 0);
+    return {from:startOfDay(first), to:endOfDay(last)};
+  }
+  return null;
+}
+function toNum(v){
+  if(v===null||v===undefined) return null;
+  const n = parseFloat(String(v).replace(/[^0-9.\-]/g,''));
+  return isNaN(n) ? null : n;
+}
+
+/* ---------- master search (SAP-style multi-value / range matching) ----------
+   Each field accepts a comma-separated mix of exact/substring values and
+   numeric ranges ("55000001-55000050"), matched with OR logic within a
+   field and AND logic across fields — same pattern as SAP's multiple
+   selection. */
+function parseSearchTokens(input){
+  if(!input || !input.trim()) return [];
+  return input.split(/[,;\n\t\r]+/).map(s=>s.trim()).filter(Boolean).map(tok=>{
+    const rangeMatch = tok.match(/^(\d+)\s*-\s*(\d+)$/);
+    if(rangeMatch) return { type:'range', min:parseInt(rangeMatch[1],10), max:parseInt(rangeMatch[2],10) };
+    return { type:'value', value:tok };
+  });
+}
+function tokensMatch(tokens, rawValue){
+  if(!tokens.length) return true;
+  const val = String(rawValue ?? '').trim();
+  if(!val) return false;
+  const numVal = toNum(val);
+  return tokens.some(t => t.type==='range' ? (numVal!=null && numVal>=t.min && numVal<=t.max) : val.toLowerCase().includes(t.value.toLowerCase()));
+}
+
+async function runMasterSearch(criteria){
+  const results = [];
+  for(const plant of ['SAILY','J177','E125']){
+    for(const dept of ['grey','beam']){
+      const sapInfo = await fetchSapSheet(plant, dept);
+      if(!sapInfo.linked || !sapInfo.rows.length) continue;
+      const headerMap = buildHeaderMap(sapInfo.headers, dept);
+      const joinCol = headerMap[SAP_JOIN_BY_DEPT[dept]];
+      const soCol = headerMap['SO'];
+      const qicCol = headerMap['QIC'];
+      const finalQicCol = headerMap['FINAL QIC'];
+      const chartCol = headerMap['CHART-DESIGN'];
+      const contractCol = headerMap['contract'];
+      for(const row of sapInfo.rows){
+        if(criteria.so.length && !tokensMatch(criteria.so, soCol && row[soCol])) continue;
+        if(criteria.qic.length){
+          const hit = tokensMatch(criteria.qic, qicCol && row[qicCol]) || tokensMatch(criteria.qic, finalQicCol && row[finalQicCol]);
+          if(!hit) continue;
+        }
+        if(criteria.contract.length && !tokensMatch(criteria.contract, contractCol && row[contractCol])) continue;
+        results.push({ plant, dept, orderNo: joinCol ? row[joinCol] : null, row, headerMap, soCol, qicCol, finalQicCol, chartCol, contractCol });
+        if(results.length >= 60) return results; // keep results reviewable
+      }
+    }
+  }
+  return results;
+}
+
+async function enrichSearchResult(r){
+  const plant = r.plant, orderNo = String(r.orderNo ?? '').trim();
+  const out = { ...r, weaving:null, warping:null };
+  if(r.dept==='grey'){
+    const beamEntries = await loadAll(`${plant}:beamentry:`, false);
+    const match = beamEntries.find(e=>e.greyOrder===orderNo);
+    if(match){
+      const loRec = await Storage.get(`${plant}:looporder:${match.greyOrder}`, false);
+      let lo=null; try{ lo = loRec ? JSON.parse(loRec.value) : null; }catch(e){}
+      out.weaving = { beamId:match.beamId, seq:match.seq, loomNo:match.loomNo, mountDT:match.mountDT, status: lo?lo.status:'not started', rpm: lo?.loomRpm, efficiency: lo?.efficiency };
+    }
+    const batchCol = r.headerMap['BeamBatch'];
+    const beamBatch = batchCol ? r.row[batchCol] : null;
+    if(beamBatch){
+      const warpBeams = await loadAll(`${plant}:warpbeam:`, false);
+      const wmatch = warpBeams.find(b=>normOrderKey(b.warpOrder)===normOrderKey(beamBatch));
+      if(wmatch) out.warping = { beamId:wmatch.beamId, warpOrder:wmatch.warpOrder, machineNo:wmatch.machineNo, status:wmatch.status, warpDT:wmatch.warpDT };
+    }
+  } else {
+    const warpBeams = await loadAll(`${plant}:warpbeam:`, false);
+    const match = warpBeams.find(b=>b.warpOrder===orderNo);
+    if(match) out.warping = { beamId:match.beamId, warpOrder:match.warpOrder, machineNo:match.machineNo, status:match.status, warpDT:match.warpDT };
+  }
+  return out;
+}
+
+/* ---------- per-sequence custom RPM/efficiency override ----------
+   Overrides are per SEQUENCE, not per beam: RPM/Efficiency carry forward
+   from whichever sequence last set them (an actual Start Loom Order Scan,
+   or a manual override), until a later sequence changes them again. */
+async function getSeqOverride(plant, beamId, seq){
+  const rec = await Storage.get(`${plant}:seqoverride:${beamId}:${seq}`, false);
+  if(!rec || !rec.value) return null;
+  try{ return JSON.parse(rec.value); }catch(e){ return null; }
+}
+async function setSeqOverride(plant, beamId, seq, override){
+  await Storage.set(`${plant}:seqoverride:${beamId}:${seq}`, JSON.stringify(override), false);
+}
+
+/* ---------- production / projection engine ----------
+   Production (m/hr) = (RPM x 60 x Efficiency) / (39.37 x PPI x 100)
+   Production per day = Production per hour x 24
+   Total run hours     = Order Qty / Production per hour
+
+   Sequence 1's actual/projected start comes from its own Start Loom Order
+   Scan. Each later sequence's projected start is the previous sequence's
+   actual (if Finish order scanned) or projected beam-fall time, +30 min.
+
+   RPM/Efficiency are considered order-wise: a sequence uses (in priority
+   order) its own custom override, else its own actual Start Loom Order
+   Scan values, else whatever carried forward from the previous sequence.
+   Changing sequence 2's RPM/Eff therefore affects 2, 3, 4... onward,
+   until a later sequence sets its own.
+
+   Quality status: exactly one sequence is "ON LOOM" (the first
+   not-yet-finished one); everything after it is "U/Ktg"; anything
+   finished (via Finish order scan, or auto-finished once Delivered Qty
+   reaches 90% of Order Qty) shows "FINISH".
+
+   Final beam runout date/time is one shared value for the whole beam:
+   the LAST sequence's PROJECTED beam-fall time. */
+function computeProductionPerHour(rpm, eff, ppi){
+  rpm = toNum(rpm); eff = toNum(eff); ppi = toNum(ppi);
+  if(!rpm || !eff || !ppi) return null;
+  return (rpm * 60 * eff) / (39.37 * ppi * 100);
+}
+
+/* A loom can only run one beam at a time. Before a brand-new "Scan new
+   beam" is allowed on a loom, check whether any beam already mounted on
+   that loom is still Running (not every sequence finished — neither via
+   Finish order scan nor auto-finished by Delivered Qty). */
+async function findBusyBeamOnLoom(plant, loomNo){
+  const beamEntries = await loadAll(`${plant}:beamentry:`, false);
+  const candidateBeamIds = new Set(beamEntries.filter(e=>String(e.loomNo)===String(loomNo)).map(e=>e.beamId));
+  if(!candidateBeamIds.size) return null;
+
+  const loomOrders = await loadAll(`${plant}:looporder:`, false);
+  const looporderByGrey = {}; loomOrders.forEach(o=>looporderByGrey[o.greyOrder]=o);
+  const sapInfo = await fetchSapSheet(plant, 'grey');
+  const headerMap = buildHeaderMap(sapInfo.headers, 'grey');
+  const sapMap = sapMapByOrder(sapInfo.rows, headerMap, 'grey');
+
+  for(const beamId of candidateBeamIds){
+    const entries = beamEntries.filter(e=>e.beamId===beamId).sort((a,b)=>a.seq-b.seq);
+    const { beamStatus } = await computeBeamSequences(plant, beamId, entries, looporderByGrey, sapMap, headerMap);
+    if(beamStatus === 'Running') return beamId;
+  }
+  return null;
+}
+
+async function computeBeamSequences(plant, beamId, entries, looporderByGrey, sapMapGrey, headerMapGrey){
+  const results = [];
+  let cursorStart = null;
+  let carryRpm = null, carryEff = null;
+
+  for(let i=0;i<entries.length;i++){
+    const e = entries[i];
+    const lo = looporderByGrey[e.greyOrder] || null;
+    const override = await getSeqOverride(plant, beamId, e.seq);
+    const sapRow = sapMapGrey[normOrderKey(e.greyOrder)] || null;
+    const orderQty = sapRow && headerMapGrey['ORDER QTY'] ? toNum(sapRow[headerMapGrey['ORDER QTY']]) : null;
+    const deliveredQty = sapRow && headerMapGrey['DELIVERED QTY'] ? toNum(sapRow[headerMapGrey['DELIVERED QTY']]) : null;
+    const ppi = sapRow && headerMapGrey['PPI'] ? toNum(sapRow[headerMapGrey['PPI']]) : null;
+
+    // order-wise RPM/Efficiency: override > this sequence's own actual scan > carried forward
+    const effRpm = (override && override.loomRpm) || (lo && lo.loomRpm) || carryRpm || null;
+    const effEff = (override && override.efficiency) || (lo && lo.efficiency) || carryEff || null;
+    carryRpm = effRpm; carryEff = effEff;
+
+    let actualStart = null, projectedStart = null;
+    if(i===0){
+      if(lo && lo.startDT){ actualStart = lo.startDT; projectedStart = lo.startDT; }
+    } else {
+      projectedStart = cursorStart;
+      if(lo && lo.startDT) actualStart = lo.startDT;
+    }
+
+    const startBasis = actualStart || projectedStart;
+    const prodPerHour = computeProductionPerHour(effRpm, effEff, ppi);
+    const prodPerDay = prodPerHour!=null ? prodPerHour*24 : null;
+    let projectedFall = null;
+    let isTentative = false;
+    if(startBasis && prodPerHour && orderQty){
+      projectedFall = addMinutesToDT(startBasis, (orderQty / prodPerHour) * 60);
+    } else if(!startBasis && prodPerDay && orderQty!=null && deliveredQty!=null){
+      // No actual loom start recorded, but SAP already shows delivered progress —
+      // estimate the remaining run from today based on balance to deliver.
+      const balance = orderQty - deliveredQty;
+      if(prodPerDay > 0){
+        const daysRemaining = Math.max(balance, 0) / prodPerDay;
+        projectedFall = addMinutesToDT(nowStamp(), daysRemaining * 24 * 60);
+        isTentative = true;
+      }
+    }
+
+    let actualFall = null;
+    if(lo && lo.status==='finished' && lo.finishDT) actualFall = lo.finishDT;
+
+    const autoFinished = (orderQty!=null && deliveredQty!=null && orderQty>0) ? (deliveredQty >= 0.9*orderQty) : false;
+    const isFinished = !!actualFall || autoFinished;
+
+    results.push({
+      seq:e.seq, greyOrder:e.greyOrder, loomNo:e.loomNo,
+      actualStart, projectedStart, actualFall, projectedFall, isFinished, isTentative,
+      effRpm, effEff, prodPerHour, prodPerDay,
+      shift: lo?.shift || null, changeoverType: lo?.changeoverType || null,
+      hasOverride: !!override,
+    });
+
+    const basisForNext = actualFall || projectedFall;
+    cursorStart = basisForNext ? addMinutesToDT(basisForNext, 30) : null;
+  }
+
+  let activeAssigned = false;
+  results.forEach(r=>{
+    if(r.isFinished){ r.qualityStatus = 'FINISH'; return; }
+    if(!activeAssigned){ r.qualityStatus = 'ON LOOM'; activeAssigned = true; }
+    else { r.qualityStatus = 'U/Ktg'; }
+  });
+
+  const anyActive = results.some(r=>r.qualityStatus==='ON LOOM' || r.qualityStatus==='U/Ktg');
+  const beamStatus = results.length ? (anyActive ? 'Running' : 'Finish') : '—';
+  // shared across the whole beam: last sequence's PROJECTED beam-fall time
+  const beamFinalRunout = results.length ? results[results.length-1].projectedFall : null;
+  const beamFinalRunoutIsTentative = results.length ? results[results.length-1].isTentative : false;
+  results.forEach(r=>{ r.finalRunout = beamFinalRunout; r.finalRunoutIsTentative = beamFinalRunoutIsTentative; });
+
+  return { results, beamStatus, beamFinalRunout };
+}
+
+function openSeqOverrideModal(plant, beamId, seq, effRpm, effEff, onSaved){
+  getSeqOverride(plant, beamId, seq).then(override=>{
+    const bg = document.createElement('div');
+    bg.className = 'modal-bg';
+    bg.innerHTML = `
+      <div class="modal">
+        <h3>Revise RPM / efficiency</h3>
+        <p>Beam <b>${beamId}</b>, sequence <b>${seq}</b> is currently projecting using RPM <b>${effRpm || '—'}</b> and efficiency <b>${effEff || '—'}%</b>. Setting a custom value here applies from this sequence onward (2, 3, 4\u2026), until a later sequence sets its own.</p>
+        <div class="field">
+          <label>Loom RPM override</label>
+          <input id="ovRpm" class="text-input" inputmode="numeric" value="${override?.loomRpm ?? ''}" placeholder="${effRpm || 'e.g. 480'}">
+        </div>
+        <div class="field">
+          <label>Efficiency % override</label>
+          <input id="ovEff" class="text-input" inputmode="numeric" value="${override?.efficiency ?? ''}" placeholder="${effEff || 'e.g. 85'}">
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-outline" onclick="this.closest('.modal-bg').remove()">Cancel</button>
+          <button class="btn btn-outline" id="ovClearBtn">Clear override</button>
+          <button class="btn btn-primary" id="ovSaveBtn">Save</button>
+        </div>
+      </div>`;
+    document.body.appendChild(bg);
+    bg.querySelector('#ovClearBtn').onclick = async ()=>{
+      await Storage.delete(`${plant}:seqoverride:${beamId}:${seq}`, false);
+      bg.remove(); toast('Override cleared'); onSaved();
+    };
+    bg.querySelector('#ovSaveBtn').onclick = async ()=>{
+      const rpm = bg.querySelector('#ovRpm').value.trim();
+      const eff = bg.querySelector('#ovEff').value.trim();
+      await setSeqOverride(plant, beamId, seq, { loomRpm: rpm||null, efficiency: eff||null });
+      bg.remove(); toast('Override saved'); onSaved();
+    };
+  });
+}
+
+/* Scan-first entry point: scan a grey order, resolve which beam+sequence
+   it belongs to, then open the same revise-RPM/efficiency modal. */
+function openReviseRpmEffByScan(plant, onSaved){
+  const bg = document.createElement('div');
+  bg.className = 'modal-bg';
+  bg.innerHTML = `
+    <div class="modal">
+      <h3>Revise RPM / efficiency</h3>
+      <p>Scan the grey order whose loom RPM or efficiency you want to change.</p>
+      <div class="field">
+        <label>Grey order</label>
+        <div class="field-with-scan">
+          <input id="revGreyOrder" class="scan-input" inputmode="numeric" autofocus
+            onkeydown="if(event.key==='Enter'){event.preventDefault(); lookupRpmEffByGrey('${plant}');}">
+          <button type="button" class="scan-btn" onclick="openBarcodeScanner('revGreyOrder', {onScanned:'lookupRpmEffByGrey_${plant}'})" aria-label="Scan grey order">${SCAN_ICON}</button>
+        </div>
+        <div id="revGreyOrderErr"></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-outline" onclick="this.closest('.modal-bg').remove()">Cancel</button>
+        <button class="btn btn-primary" onclick="lookupRpmEffByGrey('${plant}')">Continue</button>
+      </div>
+    </div>`;
+  document.body.appendChild(bg);
+  window[`lookupRpmEffByGrey_${plant}`] = () => lookupRpmEffByGrey(plant);
+  window.__reviseOnSaved = onSaved;
+}
+async function lookupRpmEffByGrey(plant){
+  const val = document.getElementById('revGreyOrder').value.trim();
+  const errEl = document.getElementById('revGreyOrderErr');
+  errEl.innerHTML = '';
+  if(!validGreyOrder(plant, val)){
+    errEl.innerHTML = `<div class="err">Grey order must be ${greyRangeHint(plant)}.</div>`; return;
+  }
+  const entries = await loadAll(`${plant}:beamentry:`, false);
+  const match = entries.find(e=>e.greyOrder===val);
+  if(!match){
+    errEl.innerHTML = `<div class="err">This grey order hasn't been scanned in "Scan new beam" yet.</div>`; return;
+  }
+  const looporders = await loadAll(`${plant}:looporder:`, false);
+  const looporderByGrey = {}; looporders.forEach(o=>looporderByGrey[o.greyOrder]=o);
+  const beamEntries = entries.filter(e=>e.beamId===match.beamId).sort((a,b)=>a.seq-b.seq);
+  const sapInfo = await fetchSapSheet(plant, 'grey');
+  const headerMap = buildHeaderMap(sapInfo.headers, 'grey');
+  const sapMap = sapMapByOrder(sapInfo.rows, headerMap, 'grey');
+  const { results } = await computeBeamSequences(plant, match.beamId, beamEntries, looporderByGrey, sapMap, headerMap);
+  const r = results.find(x=>x.greyOrder===val);
+  document.querySelector('.modal-bg')?.remove();
+  openSeqOverrideModal(plant, match.beamId, match.seq, r?.effRpm, r?.effEff, window.__reviseOnSaved || (()=>{}));
+}
+
+function toast(msg, isErr){
+  const t = document.getElementById('toast');
+  document.getElementById('toastText').textContent = msg;
+  t.classList.toggle('err', !!isErr);
+  t.classList.add('show');
+  clearTimeout(window.__toastTimer);
+  window.__toastTimer = setTimeout(()=>t.classList.remove('show'), 2600);
+}
+
+/* ---------- validation (plant-aware) ---------- */
+function validLoomNo(plant, v){
+  const n = parseInt(v,10);
+  if(isNaN(n)) return false;
+  return PLANTS[plant].loomRanges.some(([a,b]) => n>=a && n<=b);
+}
+function validGreyOrder(plant, v){
+  const n = parseInt(v,10);
+  if(isNaN(n)) return false;
+  const [a,b] = PLANTS[plant].greyRange;
+  return n>=a && n<=b;
+}
+function validWarpOrder(plant, v){
+  const n = parseInt(v,10);
+  if(isNaN(n)) return false;
+  const [a,b] = PLANTS[plant].warpRange;
+  return n>=a && n<=b;
+}
+function loomRangeHint(plant){
+  return PLANTS[plant].loomRanges.map(([a,b])=>`${a}–${b}`).join(', ');
+}
+function greyRangeHint(plant){ const [a,b]=PLANTS[plant].greyRange; return `${a}–${b}`; }
+function warpRangeHint(plant){ const [a,b]=PLANTS[plant].warpRange; return `${a}–${b}`; }
+
+/* ---------- counters (auto IDs, per plant) ----------
+   Tries the atomic Firestore counter first (fsNextId — see above; this is
+   what guarantees two operators scanning in the same plant at the same
+   instant still get two different IDs). Falls back to the old local
+   read-count/write-count+1 counter only when no Firebase project is
+   configured, matching single-device mode exactly as before. */
+async function nextBeamId(plant){
+  const pid = getFirebaseProjectId();
+  if (pid) { const n = await fsNextId(pid, `${plant}:counter:beam`); if (n !== null) return `${plant}-BEAM${pad5(n)}`; }
+  const rec = await Storage.get(`${plant}:counter:beam`);
+  const cur = rec ? parseInt(rec.value,10) : 0;
+  const next = cur+1;
+  await Storage.set(`${plant}:counter:beam`, String(next));
+  return `${plant}-BEAM${pad5(next)}`;
+}
+async function nextWarpId(plant){
+  const pid = getFirebaseProjectId();
+  if (pid) { const n = await fsNextId(pid, `${plant}:counter:warp`); if (n !== null) return `${plant}-WARP${pad5(n)}`; }
+  const rec = await Storage.get(`${plant}:counter:warp`);
+  const cur = rec ? parseInt(rec.value,10) : 0;
+  const next = cur+1;
+  await Storage.set(`${plant}:counter:warp`, String(next));
+  return `${plant}-WARP${pad5(next)}`;
+}
+
+/* ---------- current user + role (per device/operator) ----------
+   The user ID itself is unchanged (a free-text ID stamped on every entry,
+   stored locally per device — see the Storage doc comment above for why
+   that's also what keeps simultaneous operators' in-progress sequence
+   numbering from colliding). Role is new: a simple ROLE OF USERS list
+   (Operator / Supervisor / Admin) stored alongside it, also per device,
+   used to gate the SAP/Firestore Settings screen to Supervisor+Admin so
+   ordinary operators scanning on the shop floor can't accidentally change
+   sheet links or the shared-backend configuration. */
+const USER_ROLES = ['Operator','Supervisor','Admin'];
+async function getUser(){
+  const rec = await Storage.get('currentUser', false);
+  return rec ? rec.value : '';
+}
+async function setUser(v){
+  await Storage.set('currentUser', v, false);
+}
+async function getUserRole(){
+  const rec = await Storage.get('currentUserRole', false);
+  return (rec && USER_ROLES.includes(rec.value)) ? rec.value : 'Operator';
+}
+async function setUserRole(v){
+  await Storage.set('currentUserRole', USER_ROLES.includes(v) ? v : 'Operator', false);
+}
+async function isAdminUser(){
+  const r = await getUserRole();
+  return r === 'Supervisor' || r === 'Admin';
+}
+async function requireUser(){
+  const u = await getUser();
+  if(!u){
+    toast('Set your user ID (top right) first', true);
+    openUserModal();
+    return null;
+  }
+  return u;
+}
+async function requireAdmin(){
+  if (!(await isAdminUser())){
+    toast('Settings are restricted to Supervisor/Admin users', true);
+    return false;
+  }
+  return true;
+}
+
+/* =========================================================
+/* =========================================================
+   SAP DATA — linked Google Sheets via a Google Apps Script relay
+   One sheet per plant per department: e.g. Saily's Warping reads
+   "SAILY BEAM", Saily's Weaving reads "SAILY GREY". Headers are fixed
+   (as given) and always join on ORDER NO.
+
+   Uses the SAME published-CSV links you already have (File > Share >
+   Publish to web > CSV) — no spreadsheet ID, no different link needed.
+   A tiny Apps Script Web App (sap-proxy.gs) relays each link server-side,
+   which sidesteps the browser CORS block Google's CSV endpoint hits when
+   fetched directly. See CLAUDE.md for the full investigation.
+
+   Config is shared (one setup covers everyone on the Claude preview);
+   on a standalone deployment each browser needs its own one-time setup
+   since there's no shared backend.
+   ========================================================= */
+const SAP_HEADERS_BY_DEPT = {
+  beam: ['BEAM ORDER','WEAVING PLANT','SO','ITEM','PREFIX','QIC','suffix','FINAL QIC','CHART-DESIGN','MKT SHADE','REED','RS','PPI','contract','CHART NO','ORDER QTY','DELIVERED QTY'],
+  grey: ['GREY ORDER','WEAVING PLANT','SO','ITEM','PREFIX','QIC','suffix','FINAL QIC','CHART-DESIGN','MKT SHADE','REED','RS','PPI','contract','CHART NO','ORDER QTY','DELIVERED QTY','BeamBatch'],
+};
+const SAP_JOIN_BY_DEPT = { beam:'BEAM ORDER', grey:'GREY ORDER' };
+const SAP_SHEET_LABEL = { SAILY:{beam:'SAILY BEAM', grey:'SAILY GREY'}, J177:{beam:'J177 BEAM', grey:'J177 GREY'}, E125:{beam:'E125 BEAM', grey:'E125 GREY'} };
+
+function parseCsv(text){
+  const result = Papa.parse(text, { header:true, skipEmptyLines:true });
+  const headers = (result.meta && result.meta.fields) ? result.meta.fields : [];
+  return { headers, rows: result.data };
+}
+
+async function getSapSheets(){
+  const rec = await Storage.get('sapsheets', true);
+  if(!rec || !rec.value) return {};
+  try{ return JSON.parse(rec.value); }catch(e){ return {}; }
+}
+async function setSapSheets(obj){
+  await Storage.set('sapsheets', JSON.stringify(obj), true);
+}
+
+/* dept: 'beam' (Warping) or 'grey' (Weaving) */
+/* Accepts either a normal Google Sheets link (docs.google.com/spreadsheets/
+   d/ID/edit?gid=TAB) or a published-CSV link, and builds the right query
+   for the Apps Script relay — the user doesn't need to know the difference. */
+function buildSapRequestUrl(scriptUrl, sheetLink){
+  const idMatch = sheetLink.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  const isPublishLink = /\/d\/e\//.test(sheetLink);
+  if(idMatch && !isPublishLink){
+    const id = idMatch[1];
+    const gidMatch = sheetLink.match(/[?&#]gid=(\d+)/);
+    const gid = gidMatch ? gidMatch[1] : '';
+    return `${scriptUrl}?id=${encodeURIComponent(id)}${gid ? '&gid='+encodeURIComponent(gid) : ''}`;
+  }
+  return `${scriptUrl}?url=${encodeURIComponent(sheetLink)}`;
+}
+
+const __sapMemCache = {}; // "plant:dept" -> {data, timestamp} — short-lived, cleared by SAP settings save
+const SAP_CACHE_TTL_MS = 90000; // 90s: fresh enough, but avoids refetching the whole sheet on every report navigation
+
+async function fetchSapSheet(plant, dept){
+  const memKey = `${plant}:${dept}`;
+  const mem = __sapMemCache[memKey];
+  if(mem && (Date.now() - mem.timestamp) < SAP_CACHE_TTL_MS) return mem.data;
+
+  const sheets = await getSapSheets();
+  const scriptUrl = sheets?.scriptUrl;
+  const csvUrl = sheets?.[plant]?.[dept+'Url'];
+  const cacheKey = `sapcache:${plant}:${dept}`;
+  if(!scriptUrl || !csvUrl) return { rows:[], headers:[], fetchedAt:null, linked:false };
+  try{
+    const relayUrl = buildSapRequestUrl(scriptUrl, csvUrl);
+    const res = await fetch(relayUrl, { cache:'no-store' });
+    if(!res.ok) throw new Error('bad status');
+    const text = await res.text();
+    const { headers, rows } = parseCsv(text);
+    const fetchedAt = nowStamp();
+    await Storage.set(cacheKey, JSON.stringify({ rows, headers, fetchedAt }), false);
+    const result = { rows, headers, fetchedAt, linked:true, fromCache:false };
+    __sapMemCache[memKey] = { data: result, timestamp: Date.now() };
+    return result;
+  }catch(e){
+    const cached = await Storage.get(cacheKey, false);
+    if(cached && cached.value){
+      try{ const d = JSON.parse(cached.value); return { rows:d.rows||[], headers:d.headers||[], fetchedAt:d.fetchedAt, linked:true, fromCache:true }; }catch(e2){}
+    }
+    return { rows:[], headers:[], fetchedAt:null, linked:true, fromCache:false, error:true };
+  }
+}
+
+/* Header and value matching is deliberately forgiving: real-world sheets
+   rarely match a spec character-for-character (extra spaces, different
+   casing, number formatting with commas, etc). We match headers ignoring
+   case/whitespace, and match order numbers by digits only. */
+function normHeader(h){ return String(h||'').replace(/\s+/g,' ').trim().toUpperCase(); }
+function normOrderKey(v){ return String(v??'').replace(/[^0-9]/g,''); }
+
+function buildHeaderMap(actualHeaders, dept){
+  const map = {};
+  SAP_HEADERS_BY_DEPT[dept].forEach(h=>{
+    const norm = normHeader(h);
+    map[h] = actualHeaders.find(a => normHeader(a) === norm) || null;
+  });
+  return map;
+}
+
+function sapMapByOrder(rows, headerMap, dept){
+  const joinKey = headerMap[SAP_JOIN_BY_DEPT[dept]];
+  const map = {};
+  if(!joinKey) return map;
+  rows.forEach(r=>{ const k = normOrderKey(r[joinKey]); if(k) map[k]=r; });
+  return map;
+}
+
+/* Column defs for a department's SAP fields — attach to a report's row set
+   by setting row.__sapKey to that row's order number (grey order or beam
+   order) before calling renderReport. */
+function sapExtraColumns(sapMap, headerMap, dept){
+  return SAP_HEADERS_BY_DEPT[dept].map(h => {
+    const actualKey = headerMap[h];
+    return {
+      key: 'sap__'+h.replace(/[^a-zA-Z0-9]/g,'_'),
+      label: h,
+      get: r => { if(!actualKey) return ''; const s = sapMap[normOrderKey(r.__sapKey)]; return s ? (s[actualKey] ?? '') : ''; }
+    };
+  });
+}
+
+function sapSyncNote(info, sheetLabel, headerMap, dept){
+  if(!info.linked) return `<div class="note">No sheet linked for "${sheetLabel}" yet — tap the \u2699 icon (top right) to set it up.</div>`;
+  if(info.error) return `<div class="note" style="background:var(--red-soft); border-color:#e3c6c1; color:#7a2c23;">Couldn't reach "${sheetLabel}" and no cached copy is saved yet. Check the Apps Script URL and the CSV link in Settings.</div>`;
+  const cacheNote = info.fromCache ? ` (cached copy from ${fmtDT(info.fetchedAt)} — couldn't reach it just now)` : ` synced just now (${fmtDT(info.fetchedAt)})`;
+  const joinCol = SAP_JOIN_BY_DEPT[dept];
+  if(headerMap && !headerMap[joinCol]){
+    return `<div class="note" style="background:var(--red-soft); border-color:#e3c6c1; color:#7a2c23;">"${sheetLabel}"${cacheNote}, ${info.rows.length} rows — but no "${joinCol}" column was found. Sheet columns seen: ${info.headers.join(', ') || '(none)'}. Check the header spelling in row 1 of that sheet.</div>`;
+  }
+  const missing = headerMap ? SAP_HEADERS_BY_DEPT[dept].filter(h=>!headerMap[h]) : [];
+  const missingNote = missing.length ? ` ${missing.length} column${missing.length===1?'':'s'} not found in the sheet (${missing.join(', ')}) — those will show blank.` : '';
+  return `<div class="note">"${sheetLabel}"${cacheNote}, ${info.rows.length} rows.${missingNote}</div>`;
+}
+
+async function openSapSettings(){
+  if (!(await requireAdmin())) return;
+  const sheets = await getSapSheets();
+  const urlField = (plant, dept) => {
+    const label = SAP_SHEET_LABEL[plant][dept];
+    const val = sheets?.[plant]?.[dept+'Url'] || '';
+    return `
+      <div class="field">
+        <label>${PLANTS[plant].label} \u2014 ${dept==='beam'?'Warping':'Weaving'} sheet (${label})</label>
+        <input id="sap_${plant}_${dept}" class="text-input" placeholder="Paste the sheet's normal URL or its published CSV link" value="${val}">
+      </div>`;
+  };
+  const bg = document.createElement('div');
+  bg.className = 'modal-bg';
+  bg.innerHTML = `
+    <div class="modal" style="max-height:88vh; overflow-y:auto;">
+      <h3>SAP data \u2014 linked Google Sheets</h3>
+      <p>Deploy <code>sap-proxy.gs</code> once as a Google Apps Script Web App (see CLAUDE.md) and paste its URL below. For each sheet, paste either its <b>normal address-bar link</b> (docs.google.com/spreadsheets/d/.../edit?gid=...) or a <b>published CSV link</b> if you already have one — either works, no need to publish anything new.</p>
+      <div class="note" style="margin-bottom:14px;">
+        Warping sheets join on <b>BEAM ORDER</b>: ${SAP_HEADERS_BY_DEPT.beam.join(', ')}<br>
+        Weaving sheets join on <b>GREY ORDER</b>: ${SAP_HEADERS_BY_DEPT.grey.join(', ')}
+      </div>
+
+      <div class="field">
+        <label>Apps Script Web App URL (one, shared by all 6 sheets)</label>
+        <input id="sap_scripturl" class="text-input" placeholder="https://script.google.com/macros/s/XXXXX/exec" value="${sheets?.scriptUrl||''}">
+      </div>
+
+      <h3 style="margin:18px 0 8px;">Shared backend (multi-user scanning)</h3>
+      <div class="note" style="margin-bottom:10px;">
+        Leave this blank to keep using this device only (data stays in this browser). Fill it in once and every phone/desktop that signs into the same Firebase project shares live scan data, with no overlap or duplicate Beam/Warp/Cut IDs even if two people scan at the exact same moment. Setup (one-time, ~5 min): at <code>console.firebase.google.com</code> create a project → Build → Firestore Database → Create database → <b>Start in test mode</b> (or set the rules below) → Project settings (⚙, top left) → copy the <b>Project ID</b> (not the project name) → paste it below.
+      </div>
+      <div class="field">
+        <label>Firebase Project ID</label>
+        <input id="firebase_pid" class="text-input" placeholder="e.g. ssml-weaving-prod" value="${getFirebaseProjectId()}">
+      </div>
+      <div class="note" style="margin-bottom:14px;">
+        Security, honestly: Firestore's "test mode" rules expire after 30 days; the rule below is the same "allow anyone" access but without the expiry, so use it only on the understanding that anyone who gets hold of this Project ID can read/write this data — there's no login check. For a factory floor tool on a private/known network that's usually an acceptable trade-off, but it is <b>not</b> the same as real access control. If you want actual logins enforced (so only your team's accounts can write), that needs Firebase Authentication wired into the app — a bigger follow-up change, ask for it separately if you want it.<br>
+        <code style="display:block; white-space:pre-wrap; margin-top:6px;">rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} { allow read, write: if true; }
+  }
+}</code>
+      </div>
+
+      ${['SAILY','J177','E125'].map(p=>`
+        <h3 style="margin:16px 0 8px;">${PLANTS[p].label}</h3>
+        ${urlField(p,'beam')}
+        ${urlField(p,'grey')}
+      `).join('')}
+      <div class="btn-row" style="margin-top:16px;">
+        <button class="btn btn-outline" onclick="this.closest('.modal-bg').remove()">Close</button>
+        <button class="btn btn-primary" onclick="saveSapSettings()">Save</button>
+      </div>
+    </div>`;
+  document.body.appendChild(bg);
+}
+
+async function saveSapSettings(){
+  if (!(await requireAdmin())) return;
+  const scriptUrl = document.getElementById('sap_scripturl').value.trim();
+  if(!scriptUrl){ toast('Add the Apps Script Web App URL first', true); return; }
+
+  const sheets = { scriptUrl };
+  for(const p of ['SAILY','J177','E125']){
+    sheets[p] = {
+      beamUrl: document.getElementById(`sap_${p}_beam`).value.trim(),
+      greyUrl: document.getElementById(`sap_${p}_grey`).value.trim(),
+    };
+  }
+  await setSapSheets(sheets);
+  Object.keys(__sapMemCache).forEach(k=>delete __sapMemCache[k]);
+
+  const pidInput = document.getElementById('firebase_pid');
+  const pid = pidInput ? pidInput.value.trim() : '';
+  setFirebaseProjectIdSync(pid);
+
+  toast(pid ? 'Saved — shared backend active for this device' : 'SAP sheet links saved');
+  document.querySelector('.modal-bg')?.remove();
+}
+
+
+/* ---------- generic record helpers ---------- */
+async function loadAll(prefix, shared=true){
+  const res = await Storage.list(prefix, shared);
+  const keys = (res && res.keys) || [];
+  const out = [];
+  const CHUNK = 25; // fetch in parallel batches rather than one key at a time
+  for(let i=0;i<keys.length;i+=CHUNK){
+    const batch = keys.slice(i, i+CHUNK);
+    const recs = await Promise.all(batch.map(k=>Storage.get(k, shared)));
+    recs.forEach((rec, idx)=>{
+      if(rec){ try{ const obj = JSON.parse(rec.value); obj.__storageKey = batch[idx]; obj.__storageShared = shared; out.push(obj); }catch(e){} }
+    });
+  }
+  return out;
+}
+async function deleteByStorageKey(r){
+  if(r && r.__storageKey){ await Storage.delete(r.__storageKey, !!r.__storageShared); }
+}
+
+/* =========================================================
+   ROUTER
+   Hash formats:
+     #/home                                -> plant picker
+     #/plant/SAILY                         -> plant menu (weaving/warping)
+     #/plant/SAILY/weaving                 -> weaving submenu
+     #/plant/SAILY/weaving/scan-new-beam   -> a form/screen
+     #/plant/SAILY/warping/...             -> warping screens
+   ========================================================= */
+const plantRoutes = {};
+window.addEventListener('hashchange', render);
+
+function go(path){ location.hash = '#/'+path; }
+
+function parseHash(){
+  const raw = (location.hash || '#/home').slice(2);
+  const parts = raw.split('/').filter(Boolean);
+  if(parts[0] === 'plant'){
+    return { plant: parts[1], sub: parts.slice(2).join('/') || 'menu' };
+  }
+  return { plant: null, sub: parts.join('/') || 'home' };
+}
+
+function render(){
+  const { plant, sub } = parseHash();
+  if(!plant || !PLANTS[plant]){
+    currentPlant = null;
+    applyTheme(null);
+    routeHome();
+    return;
+  }
+  currentPlant = plant;
+  applyTheme(plant);
+  const handler = plantRoutes[sub] || plantRoutes['menu'];
+  handler(plant);
+}
+
+/* =========================================================
+   SHELL
+   ========================================================= */
+function reportTabsHtml(plant, activePath){
+  return `<nav class="report-tabs" id="reportTabs">${reportsItems.map(i=>
+    `<button class="rtab${i.warp?' warp':''}${i.path===activePath?' active':''}" onclick="go('plant/${plant}/${i.path}')">${i.t}</button>`
+  ).join('')}</nav>`;
+}
+
+function shell({title, back, right, content, wide}){
+  const app = document.getElementById('app');
+  const { plant: hp, sub } = parseHash();
+  const isReport = !!hp && PLANTS[hp] && reportsItems.some(i=>i.path===sub);
+  if(isReport){ wide = true; back = `plant/${hp}`; }
+  app.classList.toggle('wide', !!wide);
+  app.innerHTML = `
+    <div class="sticky-head">
+      <div class="topbar">
+        ${back ? `<button class="back" onclick="go('${back}')">‹</button>` : `<div style="width:34px"></div>`}
+        <div class="titles">
+          <div class="brand">SSML Weaving <span class="ver">${APP_VERSION}</span></div>
+          <h1>${title}</h1>
+        </div>
+        ${right || '<span id="autoActions"></span>'}
+      </div>
+      ${isReport ? reportTabsHtml(hp, sub) : ''}
+    </div>
+    <main id="main"></main>
+  `;
+  document.getElementById('main').innerHTML = content;
+  if(!right){ userChip().then(html=>{ const el=document.getElementById('autoActions'); if(el) el.outerHTML = html; }); }
+  if(isReport){
+    const act = document.querySelector('#reportTabs .rtab.active');
+    if(act && act.scrollIntoView) act.scrollIntoView({inline:'center', block:'nearest'});
+  }
+}
+
+async function userChip(){
+  const u = await getUser();
+  const role = await getUserRole();
+  const admin = role === 'Supervisor' || role === 'Admin';
+  const homeBtn = `<button class="gearbtn" onclick="go('home')" aria-label="Home">${HOME_ICON}</button>`;
+  const navBtn = currentPlant ? `<button class="gearbtn" onclick="openQuickNav()" aria-label="Quick navigation">${NAV_ICON}</button>` : '';
+  const gearBtn = admin ? `<button class="gearbtn" onclick="openSapSettings()" aria-label="SAP data settings">${GEAR_ICON}</button>` : '';
+  return `<div class="topbar-actions">
+    ${homeBtn}
+    ${navBtn}
+    ${gearBtn}
+    <button class="userchip" onclick="openUserModal()">${u ? `${u} · ${role}` : 'Set user ▾'}</button>
+  </div>`;
+}
+
+function openQuickNav(){
+  if(!currentPlant) return;
+  const plant = currentPlant;
+  const bg = document.createElement('div');
+  bg.className = 'modal-bg';
+  bg.innerHTML = `
+    <div class="modal" style="max-height:85vh; overflow-y:auto;">
+      <h3>Jump to \u2014 ${PLANTS[plant].label}</h3>
+      <p>Quick navigation \u2014 skip straight to any screen for this plant.</p>
+      <div style="font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-soft); font-weight:700; margin:14px 0 6px;">Weaving</div>
+      <div class="list">
+        ${weavingItems.map(i=>`<button class="list-item" style="padding:12px 14px;" onclick="this.closest('.modal-bg').remove(); go('plant/${plant}/weaving/${i.k}')">
+          <div class="letter">${i.l}</div><div class="txt"><div class="title">${i.t}</div></div><div class="chev">\u203a</div>
+        </button>`).join('')}
+      </div>
+      <div style="font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-soft); font-weight:700; margin:16px 0 6px;">Warping</div>
+      <div class="list">
+        ${warpingItems.map(i=>`<button class="list-item warp" style="padding:12px 14px;" onclick="this.closest('.modal-bg').remove(); go('plant/${plant}/warping/${i.k}')">
+          <div class="letter">${i.l}</div><div class="txt"><div class="title">${i.t}</div></div><div class="chev">\u203a</div>
+        </button>`).join('')}
+      </div>
+      <button class="btn btn-outline" style="margin-top:16px;" onclick="this.closest('.modal-bg').remove()">Close</button>
+    </div>`;
+  document.body.appendChild(bg);
+}
+
+function openUserModal(){
+  Promise.all([getUser(), getUserRole()]).then(([u, role])=>{
+    const bg = document.createElement('div');
+    bg.className='modal-bg';
+    bg.innerHTML = `
+      <div class="modal">
+        <h3>User ID</h3>
+        <p>Enter the email or ID you work under. It's saved on this device and stamped on every entry you make, across all plants.</p>
+        <input id="userIdInput" class="text-input" placeholder="e.g. operator1@ssmlweaving.com" value="${u||''}" />
+        <div class="field" style="margin-top:12px;">
+          <label>Role</label>
+          <select id="userRoleInput" class="text-input">
+            ${USER_ROLES.map(r=>`<option value="${r}" ${r===role?'selected':''}>${r}</option>`).join('')}
+          </select>
+        </div>
+        <div class="note" style="margin-top:8px;">Supervisor/Admin can open ⚙ Settings (SAP sheet links + shared-backend setup). Operator can't — keeps shop-floor scanning simple and those links from being changed by accident.</div>
+        <div class="btn-row" style="margin-top:14px;">
+          <button class="btn btn-outline" onclick="this.closest('.modal-bg').remove()">Cancel</button>
+          <button class="btn btn-primary" onclick="saveUserModal()">Save</button>
+        </div>
+      </div>`;
+    document.body.appendChild(bg);
+    setTimeout(()=>document.getElementById('userIdInput').focus(), 50);
+  });
+}
+async function saveUserModal(){
+  const v = document.getElementById('userIdInput').value.trim();
+  if(!v){ toast('Enter a user ID', true); return; }
+  const role = document.getElementById('userRoleInput').value;
+  await setUser(v);
+  await setUserRole(role);
+  document.querySelector('.modal-bg').remove();
+  render();
+  toast('User ID saved');
+}
+
+/* ---------- barcode scanner (device camera) ----------
+   Hardware handheld/Bluetooth scanners act as a keyboard and already
+   work by just tapping the field and scanning. This camera option
+   covers phones/tablets with no hardware scanner attached. */
+let __scannerInstance = null;
+function openBarcodeScanner(inputId, opts={}){
+  if(typeof Html5Qrcode === 'undefined'){
+    toast('Camera scanner needs an internet connection to load — scan straight into the field instead.', true);
+    return;
+  }
+  const bg = document.createElement('div');
+  bg.className = 'modal-bg';
+  bg.innerHTML = `
+    <div class="modal">
+      <h3>Scan barcode</h3>
+      <p>Hold the barcode steady inside the frame.</p>
+      <div id="scanRegion" class="scan-region"></div>
+      <button class="btn btn-outline" style="margin-top:14px;" onclick="closeBarcodeScanner()">Cancel</button>
+    </div>`;
+  document.body.appendChild(bg);
+
+  __scannerInstance = new Html5Qrcode('scanRegion');
+  __scannerInstance.start(
+    { facingMode: 'environment' },
+    { fps: 10, qrbox: { width: 260, height: 130 } },
+    (decodedText) => {
+      const el = document.getElementById(inputId);
+      if(el){ el.value = decodedText.trim(); }
+      closeBarcodeScanner();
+      if(opts.advanceTo){ const next = document.getElementById(opts.advanceTo); if(next) next.focus(); }
+      if(opts.onScanned && typeof window[opts.onScanned] === 'function'){ window[opts.onScanned](); }
+    },
+    () => { /* ignore per-frame decode misses */ }
+  ).catch(() => {
+    toast('Could not start camera — check camera permission for this page.', true);
+    closeBarcodeScanner();
+  });
+}
+function closeBarcodeScanner(){
+  const bg = document.querySelector('.modal-bg');
+  if(__scannerInstance){
+    __scannerInstance.stop().then(()=>__scannerInstance.clear()).catch(()=>{});
+    __scannerInstance = null;
+  }
+  if(bg) bg.remove();
+}
+
+function toggleDT(fieldId){
+  const inp = document.getElementById(fieldId);
+  const btn = event.currentTarget;
+  const editing = inp.disabled;
+  inp.disabled = !editing;
+  btn.textContent = editing ? 'Custom' : 'Auto';
+  btn.classList.toggle('active', editing);
+  if(!editing) inp.value = nowStamp();
+  if(editing) inp.focus();
+}
+function pickSeg(groupId, btn){
+  document.querySelectorAll(`#${groupId} button`).forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+}
+function emptyState(ic,t,s){
+  return `<div class="empty"><div class="ic">${ic}</div><div class="t">${t}</div><div class="s">${s}</div></div>`;
+}
+function statusPill(status){
+  if(status==='running') return `<span class="pill pill-run">Running</span>`;
+  if(status==='finished') return `<span class="pill pill-done">Finished</span>`;
+  return `<span class="pill pill-open">Not started</span>`;
+}
+function qualityPill(status){
+  if(status==='ON LOOM') return `<span class="pill pill-run">ON LOOM</span>`;
+  if(status==='U/Ktg') return `<span class="pill pill-open">U/Ktg</span>`;
+  if(status==='FINISH') return `<span class="pill pill-done">FINISH</span>`;
+  return `<span class="pill pill-open">—</span>`;
+}
+function beamStatusPill(status){
+  if(status==='Running') return `<span class="pill pill-run">Running</span>`;
+  if(status==='Finish') return `<span class="pill pill-done">Finish</span>`;
+  return `<span class="pill pill-open">—</span>`;
+}
+function fmtDTMaybeTentative(v, isTentative){
+  const base = fmtDT(v);
+  if(!v || !isTentative) return base;
+  return `${base} <span class="pill pill-open" title="No loom start scan on record — estimated from Delivered Qty progress against daily production." style="margin-left:4px;">Tentative</span>`;
+}
+
+/* =========================================================
+   REPORT TABLE — shared search + sortable-column component
+   used by every "report" screen (Loom shed data, statuses,
+   change over log, beam fall, warping production, etc.)
+   ========================================================= */
+const __reportState = {};
+const COLUMNS_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="6" height="16" rx="1"/><rect x="9" y="4" width="6" height="16" rx="1" opacity="0.35"/><rect x="15" y="4" width="6" height="16" rx="1"/></svg>`;
+
+const SORT_UP_ICON = `<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4l8 10H4z"/></svg>`;
+const SORT_DOWN_ICON = `<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 20L4 10h16z"/></svg>`;
+const SORT_NEUTRAL_ICON = `<svg width="10" height="14" viewBox="0 0 24 30" fill="currentColor" opacity="0.5"><path d="M12 2l5 7H7z"/><path d="M12 28l-5-7h10z"/></svg>`;
+const EXPORT_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
+const CALENDAR_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`;
+
+/* Columns rendered in monospace + right-aligned (quantities/measures);
+   columns rendered in monospace but left-aligned (identifiers/codes).
+   Everything else stays in the regular typeface — mixing the two is what
+   makes a table read as a considered app rather than a raw data dump. */
+const REPORT_NUM_KEYS = new Set(['seq','loomRpm','efficiency','sap__ORDER_QTY','sap__DELIVERED_QTY','sap__REED','sap__RS','sap__PPI']);
+const REPORT_CODE_KEYS = new Set(['beamId','greyOrder','warpOrder','loomNo','__loomNo','sap__GREY_ORDER','sap__BEAM_ORDER','sap__SO','sap__CHART_NO','sap__ITEM']);
+
+async function renderReport(containerId, rows, columns, opts={}){
+  const reportKey = opts.reportKey || containerId;
+  let st = __reportState[containerId];
+  if(!st){
+    st = { search:'', sortKey: opts.defaultSortKey || (columns[0] && columns[0].key), sortDir: opts.defaultSortDir || 'desc', hiddenCols:null, colOrder:null, selected:new Set(), dateFilter:null };
+    __reportState[containerId] = st;
+  }
+  if(st.hiddenCols === null){
+    const rec = await Storage.get(`colprefs:${reportKey}`, false);
+    if(rec && rec.value){ try{ st.hiddenCols = JSON.parse(rec.value); }catch(e){ st.hiddenCols = []; } }
+    else st.hiddenCols = [];
+  }
+  if(st.colOrder === null){
+    const rec = await Storage.get(`colorder:${reportKey}`, false);
+    if(rec && rec.value){ try{ st.colOrder = JSON.parse(rec.value); }catch(e){ st.colOrder = []; } }
+    else st.colOrder = [];
+  }
+  const container = document.getElementById(containerId);
+  if(!container) return;
+  const dateCols = columns.filter(c=>c.date);
+
+  function orderedColumns(){
+    const byKey = {}; columns.forEach(c=>byKey[c.key]=c);
+    const ordered = st.colOrder.map(k=>byKey[k]).filter(Boolean);
+    columns.forEach(c=>{ if(!st.colOrder.includes(c.key)) ordered.push(c); }); // new columns append at the end
+    return ordered;
+  }
+
+  function cellClass(c){
+    if(c.numeric || REPORT_NUM_KEYS.has(c.key)) return 'num';
+    if(REPORT_CODE_KEYS.has(c.key)) return 'mono';
+    return '';
+  }
+
+  function getFiltered(){
+    let filtered = rows;
+    if(st.search.trim()){
+      const q = st.search.trim().toLowerCase();
+      filtered = rows.filter(r => columns.some(c => String(c.get(r) ?? '').toLowerCase().includes(q)));
+    }
+    if(st.dateFilter && st.dateFilter.colKey && (st.dateFilter.from || st.dateFilter.to)){
+      const dcol = columns.find(c=>c.key===st.dateFilter.colKey);
+      if(dcol){
+        filtered = filtered.filter(r=>{
+          const d = parseLocalDT(dcol.get(r));
+          if(!d) return false;
+          if(st.dateFilter.from && d < st.dateFilter.from) return false;
+          if(st.dateFilter.to && d > st.dateFilter.to) return false;
+          return true;
+        });
+      }
+    }
+    const col = columns.find(c=>c.key===st.sortKey) || columns[0];
+    const hasSeq = columns.some(c=>c.key==='seq') && rows.every(r=>r.seq!==undefined);
+    filtered = [...filtered].sort((a,b)=>{
+      let av = col.get(a), bv = col.get(b);
+      if(col.numeric){ av = parseFloat(av)||0; bv = parseFloat(bv)||0; }
+      else { av = String(av??''); bv = String(bv??''); }
+      let cmp = av>bv ? 1 : (av<bv ? -1 : 0);
+      if(cmp===0 && hasSeq && col.key!=='seq'){
+        const as = parseFloat(a.seq)||0, bs = parseFloat(b.seq)||0;
+        cmp = as>bs ? 1 : (as<bs ? -1 : 0);
+      }
+      return st.sortDir==='asc' ? cmp : -cmp;
+    });
+    return filtered;
+  }
+
+  function draw(caretPos){
+    const visibleColumns = orderedColumns().filter(c => !st.hiddenCols.includes(c.key));
+    const filtered = getFiltered();
+    const canDelete = !!opts.deletable;
+    const selectedCount = st.selected.size;
+
+    const tableHtml = rows.length===0 ? emptyState(opts.emptyIcon||'\uD83D\uDCC4', opts.emptyTitle||'No data yet', opts.emptyDesc||'') :
+      !visibleColumns.length ? emptyState('\uD83D\uDC41\uFE0F','All columns hidden','Use "Manage columns" to bring some back.') :
+      filtered.length===0 ? emptyState('\uD83D\uDD0D','No matches',`Nothing matches "${st.search}".`) : `
+      <div class="table-wrap"><table>
+        <thead><tr>
+          ${canDelete ? `<th style="width:36px;"><input type="checkbox" id="${containerId}__selectall" ${selectedCount>0 && selectedCount===filtered.length ? 'checked' : ''}></th>` : ''}
+          ${visibleColumns.map(c=>{
+          const cls = cellClass(c);
+          const icon = st.sortKey===c.key ? (st.sortDir==='asc'?SORT_UP_ICON:SORT_DOWN_ICON) : SORT_NEUTRAL_ICON;
+          return `<th class="sortable${st.sortKey===c.key?' active':''}${cls==='num'?' num':''}" data-key="${c.key}">${c.label}<span class="sort-ic">${icon}</span></th>`;
+        }).join('')}</tr></thead>
+        <tbody>${filtered.map((r,idx)=>`<tr>
+          ${canDelete ? `<td><input type="checkbox" class="rowselect" data-idx="${idx}" ${st.selected.has(idx)?'checked':''}></td>` : ''}
+          ${visibleColumns.map(c=>{
+          const cls = cellClass(c);
+          return `<td class="${cls}">${c.render ? c.render(r) : (c.get(r) ?? '\u2014')}</td>`;
+        }).join('')}</tr>`).join('')}</tbody>
+      </table></div>
+      <div class="report-count">${filtered.length} of ${rows.length} row${rows.length===1?'':'s'} \u00B7 ${visibleColumns.length} of ${columns.length} columns shown</div>`;
+
+    container.innerHTML = `
+      <div class="report-card">
+      ${rows.length ? `
+      <div class="report-toolbar">
+        <input type="text" class="report-search" id="${containerId}__search" placeholder="${opts.searchPlaceholder||'Search\u2026'}" value="${st.search.replace(/"/g,'&quot;')}">
+        ${canDelete && selectedCount>0 ? `<button type="button" class="btn btn-sm" style="background:var(--red); color:#fff; width:auto;" id="${containerId}__delbtn">${TRASH_ICON} Delete ${selectedCount}</button>` : ''}
+        ${dateCols.length ? `<button type="button" class="icobtn${st.dateFilter && st.dateFilter.colKey ? ' active' : ''}" id="${containerId}__datebtn" aria-label="Filter dates">${CALENDAR_ICON}</button>` : ''}
+        <button type="button" class="icobtn" id="${containerId}__exportbtn" aria-label="Export to Excel">${EXPORT_ICON}</button>
+        <button type="button" class="icobtn" id="${containerId}__colbtn" aria-label="Manage columns">${COLUMNS_ICON}</button>
+      </div>
+      ${st.dateFilter && st.dateFilter.colKey ? `
+      <div class="date-filter-chip">
+        <span>${CALENDAR_ICON} <b>${(columns.find(c=>c.key===st.dateFilter.colKey)||{}).label||''}</b>: ${st.dateFilter.from?toDateInputValue(st.dateFilter.from):'…'} \u2192 ${st.dateFilter.to?toDateInputValue(st.dateFilter.to):'…'}</span>
+        <button type="button" id="${containerId}__cleardate" aria-label="Clear date filter">\u2715</button>
+      </div>` : ''}
+      ` : ''}
+      ${tableHtml}
+      </div>
+    `;
+
+    const searchEl = document.getElementById(`${containerId}__search`);
+    if(searchEl){
+      if(caretPos!=null){ searchEl.focus(); searchEl.setSelectionRange(caretPos, caretPos); }
+      searchEl.oninput = (e)=>{ st.search = e.target.value; st.selected.clear(); draw(e.target.selectionStart); };
+    }
+    const colBtn = document.getElementById(`${containerId}__colbtn`);
+    if(colBtn){ colBtn.onclick = () => openColumnManager(reportKey, orderedColumns(), st, draw); }
+    const dateBtn = document.getElementById(`${containerId}__datebtn`);
+    if(dateBtn){ dateBtn.onclick = () => openDateFilterModal(dateCols, st, ()=>{ st.selected.clear(); draw(); }); }
+    const clearDateBtn = document.getElementById(`${containerId}__cleardate`);
+    if(clearDateBtn){ clearDateBtn.onclick = () => { st.dateFilter = null; st.selected.clear(); draw(); }; }
+    const exportBtn = document.getElementById(`${containerId}__exportbtn`);
+    if(exportBtn){ exportBtn.onclick = () => exportReportToExcel(reportKey, visibleColumns, getFiltered()); }
+    if(canDelete){
+      const selectAll = document.getElementById(`${containerId}__selectall`);
+      if(selectAll){ selectAll.onchange = ()=>{ if(selectAll.checked){ filtered.forEach((r,idx)=>st.selected.add(idx)); } else { st.selected.clear(); } draw(); }; }
+      container.querySelectorAll('.rowselect').forEach(cb=>{
+        cb.onchange = ()=>{ const idx=parseInt(cb.dataset.idx,10); if(cb.checked) st.selected.add(idx); else st.selected.delete(idx); draw(); };
+      });
+      const delBtn = document.getElementById(`${containerId}__delbtn`);
+      if(delBtn){
+        delBtn.onclick = async ()=>{
+          const toDelete = filtered.filter((r,idx)=>st.selected.has(idx));
+          if(!toDelete.length) return;
+          if(!confirm(`Delete ${toDelete.length} row${toDelete.length===1?'':'s'}? This can't be undone.`)) return;
+          if(opts.onDeleteRows) await opts.onDeleteRows(toDelete);
+          st.selected.clear();
+          toast(`Deleted ${toDelete.length} row${toDelete.length===1?'':'s'}`);
+          if(opts.onDeleted) opts.onDeleted();
+        };
+      }
+    }
+    container.querySelectorAll('th.sortable').forEach(th=>{
+      th.onclick = ()=>{
+        const key = th.dataset.key;
+        if(st.sortKey===key){ st.sortDir = st.sortDir==='asc' ? 'desc' : 'asc'; }
+        else { st.sortKey = key; st.sortDir = 'desc'; }
+        st.selected.clear();
+        draw();
+      };
+    });
+  }
+  draw();
+}
+
+/* ---------- Excel export (styled) ----------
+   Uses xlsx-js-style (a SheetJS fork with cell-style + freeze-pane
+   support) so the file opens looking like a finished report: bold
+   coloured header row, borders on every cell, and the header row frozen
+   so it stays visible while scrolling. */
+function exportReportToExcel(reportKey, visibleColumns, rows){
+  if(typeof XLSX === 'undefined'){ toast('Export needs an internet connection to load — try again', true); return; }
+  const dtPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+  const headerRow = visibleColumns.map(c => c.label || c.key);
+  const dataRows = rows.map(r => visibleColumns.map(c => {
+    const raw = c.get(r);
+    if(raw === undefined || raw === null) return '';
+    if(typeof raw === 'string' && dtPattern.test(raw)) return fmtDT(raw);
+    return raw;
+  }));
+  const aoa = [headerRow, ...dataRows];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+  const thinBorder = { style:'thin', color:{ rgb:'D8D2C2' } };
+  const borderAll = { top:thinBorder, bottom:thinBorder, left:thinBorder, right:thinBorder };
+  const headerStyle = {
+    font:{ bold:true, color:{ rgb:'FFFFFF' } },
+    fill:{ fgColor:{ rgb:'1B2430' } },
+    alignment:{ vertical:'center', horizontal:'left' },
+    border:borderAll,
+  };
+  const bodyStyleEven = { fill:{ fgColor:{ rgb:'FFFFFF' } }, border:borderAll, alignment:{ vertical:'center' } };
+  const bodyStyleOdd = { fill:{ fgColor:{ rgb:'FBFAF6' } }, border:borderAll, alignment:{ vertical:'center' } };
+
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  for(let R=range.s.r; R<=range.e.r; R++){
+    for(let C=range.s.c; C<=range.e.c; C++){
+      const addr = XLSX.utils.encode_cell({r:R, c:C});
+      if(!ws[addr]) continue;
+      if(R===0){ ws[addr].s = headerStyle; }
+      else { ws[addr].s = (R%2===0) ? bodyStyleEven : bodyStyleOdd; }
+    }
+  }
+  ws['!cols'] = visibleColumns.map(c => ({ wch: Math.min(Math.max((c.label||c.key).length+4, 10), 32) }));
+  ws['!rows'] = [{ hpt:22 }];
+  ws['!freeze'] = { xSplit:0, ySplit:1, topLeftCell:'A2', activeCell:'A2', state:'frozen' };
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, reportKey.slice(0,31) || 'Report');
+  XLSX.writeFile(wb, `${reportKey}-${nowStamp().replace(/[:T]/g,'-')}.xlsx`);
+}
+
+function openColumnManager(reportKey, orderedCols, st, redraw){
+  const bg = document.createElement('div');
+  bg.className = 'modal-bg';
+  function rowsHtml(){
+    return orderedCols.map((c,i)=>`
+      <div class="colcheck-row" data-key="${c.key}">
+        <input type="checkbox" value="${c.key}" ${st.hiddenCols.includes(c.key) ? '' : 'checked'}>
+        <span style="flex:1;">${c.label || '(unnamed)'}</span>
+        <button type="button" class="colmove" data-dir="up" ${i===0?'disabled':''} aria-label="Move up">\u25B2</button>
+        <button type="button" class="colmove" data-dir="down" ${i===orderedCols.length-1?'disabled':''} aria-label="Move down">\u25BC</button>
+      </div>`).join('');
+  }
+  bg.innerHTML = `
+    <div class="modal" style="max-height:85vh; overflow-y:auto;">
+      <h3>Manage columns</h3>
+      <p>Show/hide columns, or use the arrows to reorder them into your own layout. Remembered on this device.</p>
+      <div class="btn-row" style="margin-bottom:10px;">
+        <button class="btn btn-outline btn-sm" id="colSelectAll">Show all</button>
+        <button class="btn btn-outline btn-sm" id="colClearAll">Hide all</button>
+      </div>
+      <div class="colcheck-list" id="colcheckList">${rowsHtml()}</div>
+      <div class="btn-row" style="margin-top:14px;">
+        <button class="btn btn-outline" onclick="this.closest('.modal-bg').remove()">Cancel</button>
+        <button class="btn btn-primary" id="colSaveBtn">Save</button>
+      </div>
+    </div>`;
+  document.body.appendChild(bg);
+
+  function wireMoveButtons(){
+    bg.querySelectorAll('.colmove').forEach(btn=>{
+      btn.onclick = ()=>{
+        const row = btn.closest('.colcheck-row');
+        const key = row.dataset.key;
+        const i = orderedCols.findIndex(c=>c.key===key);
+        const dir = btn.dataset.dir==='up' ? -1 : 1;
+        const j = i+dir;
+        if(j<0 || j>=orderedCols.length) return;
+        [orderedCols[i], orderedCols[j]] = [orderedCols[j], orderedCols[i]];
+        document.getElementById('colcheckList').innerHTML = rowsHtml();
+        wireMoveButtons();
+      };
+    });
+  }
+  wireMoveButtons();
+
+  bg.querySelector('#colSelectAll').onclick = () => bg.querySelectorAll('.colcheck-list input[type=checkbox]').forEach(i=>i.checked=true);
+  bg.querySelector('#colClearAll').onclick = () => bg.querySelectorAll('.colcheck-list input[type=checkbox]').forEach(i=>i.checked=false);
+  bg.querySelector('#colSaveBtn').onclick = async () => {
+    const checked = Array.from(bg.querySelectorAll('.colcheck-list input[type=checkbox]:checked')).map(i=>i.value);
+    if(!checked.length){ toast('Keep at least one column visible', true); return; }
+    const allKeys = orderedCols.map(c=>c.key);
+    const hidden = allKeys.filter(k=>!checked.includes(k));
+    st.hiddenCols = hidden;
+    st.colOrder = allKeys;
+    await Storage.set(`colprefs:${reportKey}`, JSON.stringify(hidden), false);
+    await Storage.set(`colorder:${reportKey}`, JSON.stringify(allKeys), false);
+    bg.remove();
+    redraw();
+  };
+}
+
+function openDateFilterModal(dateCols, st, redraw){
+  const current = st.dateFilter || {};
+  const bg = document.createElement('div');
+  bg.className = 'modal-bg';
+  bg.innerHTML = `
+    <div class="modal">
+      <h3>Filter by date</h3>
+      <p>Show only rows whose date falls in the range below — pick a quick range or set your own.</p>
+      <div class="field">
+        <label>Date column</label>
+        <select id="dfCol" class="text-input">
+          ${dateCols.map(c=>`<option value="${c.key}" ${current.colKey===c.key?'selected':''}>${c.label}</option>`).join('')}
+        </select>
+      </div>
+      <div class="seg" style="margin-bottom:14px; flex-wrap:wrap;">
+        <button type="button" data-preset="today">Today</button>
+        <button type="button" data-preset="tomorrow">Tomorrow</button>
+        <button type="button" data-preset="next7">Next 7 days</button>
+        <button type="button" data-preset="thisweek">This week</button>
+        <button type="button" data-preset="thismonth">This month</button>
+      </div>
+      <div class="field">
+        <label>From</label>
+        <input type="date" id="dfFrom" class="text-input" value="${current.from ? toDateInputValue(current.from) : ''}">
+      </div>
+      <div class="field">
+        <label>To</label>
+        <input type="date" id="dfTo" class="text-input" value="${current.to ? toDateInputValue(current.to) : ''}">
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-outline" onclick="this.closest('.modal-bg').remove()">Cancel</button>
+        <button class="btn btn-outline" id="dfClearBtn">Clear filter</button>
+        <button class="btn btn-primary" id="dfApplyBtn">Apply</button>
+      </div>
+    </div>`;
+  document.body.appendChild(bg);
+
+  bg.querySelectorAll('[data-preset]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const p = datePreset(btn.dataset.preset);
+      if(p){
+        document.getElementById('dfFrom').value = toDateInputValue(p.from);
+        document.getElementById('dfTo').value = toDateInputValue(p.to);
+      }
+    };
+  });
+  bg.querySelector('#dfClearBtn').onclick = ()=>{
+    st.dateFilter = null;
+    bg.remove();
+    redraw();
+  };
+  bg.querySelector('#dfApplyBtn').onclick = ()=>{
+    const colKey = document.getElementById('dfCol').value;
+    const fromVal = document.getElementById('dfFrom').value;
+    const toVal = document.getElementById('dfTo').value;
+    if(!fromVal && !toVal){ toast('Pick a preset or a from/to date', true); return; }
+    st.dateFilter = {
+      colKey,
+      from: fromVal ? startOfDay(new Date(fromVal+'T00:00')) : null,
+      to: toVal ? endOfDay(new Date(toVal+'T00:00')) : null,
+    };
+    bg.remove();
+    redraw();
+  };
+}
+
+/* =========================================================
+   HOME — plant picker
+   ========================================================= */
+function routeHome(){
+  const app = document.getElementById('app');
+  app.classList.remove('wide');
+  app.innerHTML = `
+    <div class="topbar">
+      <div style="width:34px"></div>
+      <div class="titles">
+        <div class="brand">SSML Weaving <span class="ver">${APP_VERSION}</span></div>
+        <h1>Plants</h1>
+      </div>
+      <span id="chipHolder"></span>
+    </div>
+    <main>
+      <div class="home-hero">
+        <div class="eyebrow">SSML Weaving</div>
+        <h1>Which plant are<br>you on?</h1>
+        <p>Each plant has its own loom, grey order and beam-order ranges — pick one to get to Weaving and Warping.</p>
+      </div>
+
+      <div class="menu-grid cols-3">
+        <button class="menu-card plant-SAILY" onclick="go('plant/SAILY')">
+          <div>
+            <div class="tag">Plant</div>
+            <h2>Saily</h2>
+          </div>
+          <div class="rangebits">
+            <span>Loom ${loomRangeHint('SAILY')}</span>
+            <span>Grey ${greyRangeHint('SAILY')}</span>
+          </div>
+        </button>
+        <button class="menu-card plant-J177" onclick="go('plant/J177')">
+          <div>
+            <div class="tag">Plant</div>
+            <h2>J-177</h2>
+          </div>
+          <div class="rangebits">
+            <span>Loom ${loomRangeHint('J177')}</span>
+            <span>Grey ${greyRangeHint('J177')}</span>
+          </div>
+        </button>
+        <button class="menu-card plant-E125" onclick="go('plant/E125')">
+          <div>
+            <div class="tag">Plant</div>
+            <h2>E-125</h2>
+          </div>
+          <div class="rangebits">
+            <span>Loom ${loomRangeHint('E125')}</span>
+            <span>Grey ${greyRangeHint('E125')}</span>
+          </div>
+        </button>
+      </div>
+      <div class="card" style="margin-top:18px;">
+        <h3 style="margin-bottom:2px;">Master search</h3>
+        <div class="desc">Find an order across all 3 plants by QIC, SO, or Contract — searches the linked SAP data together with your scans. Paste a list straight from Excel/clipboard, or type values separated by commas or new lines — a range like 55000001-55999999 works too.</div>
+        <div class="field">
+          <label>QIC name</label>
+          <textarea id="msQic" class="text-input" rows="2" style="resize:vertical;" placeholder="Paste a list, or type comma/newline-separated values"></textarea>
+        </div>
+        <div class="field">
+          <label>SO</label>
+          <textarea id="msSo" class="text-input" rows="2" style="resize:vertical;" placeholder="Paste a list, or type comma/newline-separated values"></textarea>
+        </div>
+        <div class="field">
+          <label>Contract</label>
+          <textarea id="msContract" class="text-input" rows="2" style="resize:vertical;" placeholder="Paste a list, or type comma/newline-separated values"></textarea>
+        </div>
+        <div class="hint" style="margin-bottom:10px;">Paste a column from Excel, or separate values with commas/new lines. A numeric range like 55000001-55999999 works too. All filled fields must match.</div>
+        <button type="button" class="btn btn-primary" onclick="runMasterSearchUI()">Search</button>
+        <div id="msResults"></div>
+      </div>
+    </main>`;
+  userChip().then(html=>{ const el = document.getElementById('chipHolder'); if(el) el.innerHTML = html; });
+}
+
+async function runMasterSearchUI(){
+  const resultsEl = document.getElementById('msResults');
+  const criteria = {
+    so: parseSearchTokens(document.getElementById('msSo').value),
+    qic: parseSearchTokens(document.getElementById('msQic').value),
+    contract: parseSearchTokens(document.getElementById('msContract').value),
+  };
+  if(!criteria.so.length && !criteria.qic.length && !criteria.contract.length){
+    toast('Enter something to search for', true); return;
+  }
+  resultsEl.innerHTML = `<div class="empty"><div class="ic">⏳</div><div class="t">Searching all 3 plants…</div></div>`;
+
+  const matches = await runMasterSearch(criteria);
+  if(!matches.length){
+    resultsEl.innerHTML = emptyState('🔍','No matches','Nothing in any linked SAP sheet matches that search.');
+    return;
+  }
+  const enriched = await Promise.all(matches.slice(0,30).map(enrichSearchResult));
+  const capped = matches.length > 30;
+  document.getElementById('app').classList.add('wide');
+
+  const rows = enriched.map(r=>({
+    plantLabel: PLANTS[r.plant].label,
+    plantKey: r.plant,
+    dept: r.dept,
+    orderNo: r.orderNo,
+    typeLabel: r.dept==='grey' ? 'Weaving order' : 'Warping beam order',
+    so: r.soCol ? (r.row[r.soCol]||'') : '',
+    qic: r.qicCol ? (r.row[r.qicCol]||'') : '',
+    chart: r.chartCol ? (r.row[r.chartCol]||'') : '',
+    contract: r.contractCol ? (r.row[r.contractCol]||'') : '',
+    warpBeamId: r.warping ? r.warping.beamId : null,
+    warpStatus: r.warping ? r.warping.status : null,
+    warpMachine: r.warping ? r.warping.machineNo : null,
+    warpDT: r.warping ? r.warping.warpDT : null,
+    loomBeamId: r.weaving ? r.weaving.beamId : null,
+    loomSeq: r.weaving ? r.weaving.seq : null,
+    loomNo: r.weaving ? r.weaving.loomNo : null,
+    loomStatus: r.weaving ? r.weaving.status : null,
+    loomRpm: r.weaving ? r.weaving.rpm : null,
+    loomEff: r.weaving ? r.weaving.efficiency : null,
+    mountDT: r.weaving ? r.weaving.mountDT : null,
+  }));
+
+  resultsEl.innerHTML = `
+    ${capped ? `<div class="report-count" style="border:none; padding:0 2px 8px;">${matches.length} matches — showing the first 30</div>` : ''}
+    <div id="msResultsTable"></div>`;
+
+  renderReport('msResultsTable', rows, [
+    {key:'plantLabel', label:'Plant', get:r=>r.plantLabel},
+    {key:'orderNo', label:'Order no.', get:r=>r.orderNo},
+    {key:'typeLabel', label:'Type', get:r=>r.typeLabel},
+    {key:'so', label:'SO', get:r=>r.so, render:r=>r.so||'—'},
+    {key:'qic', label:'QIC', get:r=>r.qic, render:r=>r.qic||'—'},
+    {key:'contract', label:'Contract', get:r=>r.contract, render:r=>r.contract||'—'},
+    {key:'chart', label:'Chart design', get:r=>r.chart, render:r=>r.chart||'—'},
+    {key:'warpStatus', label:'Warping status', get:r=>r.warpStatus, render:r=> r.warpStatus ? (r.warpStatus==='on-floor'?'<span class="pill pill-open">On floor</span>':'<span class="pill pill-done">Mounted</span>') : '—'},
+    {key:'warpBeamId', label:'Warping beam ID', get:r=>r.warpBeamId, render:r=>r.warpBeamId||'—'},
+    {key:'warpMachine', label:'Machine', get:r=>r.warpMachine, render:r=>r.warpMachine||'—'},
+    {key:'warpDT', label:'Warping logged', get:r=>r.warpDT, render:r=>fmtDT(r.warpDT), date:true},
+    {key:'loomStatus', label:'Loom shed status', get:r=>r.loomStatus, render:r=> r.loomStatus ? statusPill(r.loomStatus) : '—'},
+    {key:'loomBeamId', label:'Loom shed beam ID', get:r=>r.loomBeamId, render:r=>r.loomBeamId||'—'},
+    {key:'loomSeq', label:'Seq', get:r=>r.loomSeq, numeric:true, render:r=>r.loomSeq??'—'},
+    {key:'loomNo', label:'Loom no.', get:r=>r.loomNo, numeric:true, render:r=>r.loomNo??'—'},
+    {key:'loomRpm', label:'RPM', get:r=>r.loomRpm, numeric:true, render:r=>r.loomRpm||'—'},
+    {key:'loomEff', label:'Efficiency %', get:r=>r.loomEff, numeric:true, render:r=>r.loomEff||'—'},
+    {key:'mountDT', label:'Mounted', get:r=>r.mountDT, render:r=>fmtDT(r.mountDT), date:true},
+    {key:'__open', label:'', get:()=>'', render:r=>`<button class="btn btn-sm btn-outline" onclick="go('plant/${r.plantKey}/${r.dept==='grey'?'weaving/loom-shed-data':'warping/warping-production-data'}')">Open →</button>`},
+  ], {
+    reportKey:'mastersearch',
+    defaultSortKey:'plantLabel', defaultSortDir:'asc',
+    searchPlaceholder:'Filter these results…',
+    emptyIcon:'🔍', emptyTitle:'No matches', emptyDesc:'Nothing in any linked SAP sheet matches that search.'
+  });
+}
+
+/* =========================================================
+   PLANT MENU — Weaving / Warping
+   ========================================================= */
+plantRoutes['menu'] = function(plant){
+  shell({
+    title: PLANTS[plant].label, back:'home', right: '<span id="chipHolder"></span>',
+    content: `
+      <div class="menu-grid cols-3">
+        <button class="menu-card" onclick="go('plant/${plant}/weaving')">
+          <div>
+            <div class="tag">01 · Weaving</div>
+            <h2>Weaving</h2>
+          </div>
+          <div class="count">Scans & actions — beams, looms, orders</div>
+        </button>
+        <button class="menu-card warp" onclick="go('plant/${plant}/warping')">
+          <div>
+            <div class="tag">02 · Warping</div>
+            <h2>Warping</h2>
+          </div>
+          <div class="count">Scans & actions — beam orders, floor</div>
+        </button>
+        <button class="menu-card" onclick="go('plant/${plant}/reports')">
+          <div>
+            <div class="tag">03 · Reports</div>
+            <h2>Reports</h2>
+          </div>
+          <div class="count">Every report, in one place</div>
+        </button>
+      </div>`
+  });
+  userChip().then(html=>{ const el = document.getElementById('chipHolder'); if(el) el.innerHTML = html; });
+};
+
+/* =========================================================
+   REPORTS — every report in one place, across Weaving & Warping
+   ========================================================= */
+const reportsItems = [
+  {path:'weaving/loom-shed-data', t:'Loom shed all data', s:'Every beam + order, in one place', warp:false},
+  {path:'weaving/running-loom-status', t:'Running loom status', s:'Orders currently on the loom', warp:false},
+  {path:'weaving/running-quality-status', t:'Running quality status', s:'RPM & efficiency of running orders', warp:false},
+  {path:'weaving/changeover-data', t:'Change over data', s:'Log of gaiting / knotting / matching changes', warp:false},
+  {path:'weaving/beam-fall-status', t:'Beam fall status', s:'When each beam runs out — last order, final runout date', warp:false},
+  {path:'weaving/avg-beam-length', t:'Average beam length', s:'Warping Mtr per beam — by loom type, QIC, month', warp:false},
+  {path:'weaving/loom-gantt', t:'Loom Gantt chart', s:'Every loom, every order, on a timeline', warp:false},
+  {path:'warping/warping-production-data', t:'Warping production data', s:'Every beam order logged, in one place', warp:true},
+  {path:'warping/beam-on-floor', t:'Beam on floor', s:'Beam orders waiting to be mounted on a loom', warp:true},
+];
+plantRoutes['reports'] = function(plant){
+  go(`plant/${plant}/${reportsItems[0].path}`);
+};
+
+/* =========================================================
+   WEAVING SUBMENU
+   ========================================================= */
+const weavingItems = [
+  {k:'scan-new-beam', l:'A', t:'Scan new beam', s:'Log loom no. + grey order onto a new beam ID'},
+  {k:'start-loom-scan', l:'B', t:'Start loom order scan', s:'Put a scanned grey order onto a running loom'},
+  {k:'finish-order-scan', l:'C', t:'Finish order scan', s:'Close out a running order'},
+  {k:'loom-shed-data', l:'D', t:'Loom shed all data', s:'Every beam + order, in one place'},
+  {k:'running-loom-status', l:'E', t:'Running loom status', s:'Orders currently on the loom'},
+  {k:'running-quality-status', l:'F', t:'Running quality status', s:'RPM & efficiency of running orders'},
+  {k:'changeover-data', l:'G', t:'Change over data', s:'Log of gaiting / knotting / matching changes'},
+  {k:'beam-fall-status', l:'H', t:'Beam fall status', s:'When each beam runs out — last order, final runout date'},
+  {k:'cut-beam', l:'I', t:'Cut beam', s:'Cut a running order off its loom and restart it elsewhere'},
+  {k:'avg-beam-length', l:'J', t:'Average beam length', s:'Warping Mtr per beam — by loom type, QIC, month'},
+  {k:'loom-gantt', l:'K', t:'Loom Gantt chart', s:'Every loom, every order, on a timeline'},
+];
+plantRoutes['weaving'] = function(plant){
+  shell({
+    title:`${PLANTS[plant].label} · Weaving`, back:`plant/${plant}`,
+    content: `
+      <div class="list">
+        ${weavingItems.map(i=>`
+          <button class="list-item" onclick="go('plant/${plant}/weaving/${i.k}')">
+            <div class="letter">${i.l}</div>
+            <div class="txt"><div class="title">${i.t}</div><div class="sub">${i.s}</div></div>
+            <div class="chev">›</div>
+          </button>`).join('')}
+      </div>`
+  });
+};
+
+/* =========================================================
+   WARPING SUBMENU
+   ========================================================= */
+const warpingItems = [
+  {k:'new-warp-order-scan', l:'A', t:'New warp order scan', s:'Scan a new beam order onto the floor'},
+  {k:'warping-production-data', l:'B', t:'Warping production data', s:'Every beam order logged, in one place'},
+  {k:'beam-on-floor', l:'C', t:'Beam on floor', s:'Beam orders waiting to be mounted on a loom'},
+];
+plantRoutes['warping'] = function(plant){
+  shell({
+    title:`${PLANTS[plant].label} · Warping`, back:`plant/${plant}`,
+    content: `
+      <div class="list">
+        ${warpingItems.map(i=>`
+          <button class="list-item warp" onclick="go('plant/${plant}/warping/${i.k}')">
+            <div class="letter">${i.l}</div>
+            <div class="txt"><div class="title">${i.t}</div><div class="sub">${i.s}</div></div>
+            <div class="chev">›</div>
+          </button>`).join('')}
+      </div>`
+  });
+};
+
+/* =========================================================
+   A. SCAN NEW BEAM
+   ========================================================= */
+let beamSession = null; // {beamId, seq, loomNo}
+
+plantRoutes['weaving/scan-new-beam'] = async function(plant){
+  const active = await Storage.get(`${plant}:activeBeamSession`, false);
+  beamSession = (active && active.value) ? JSON.parse(active.value) : null;
+
+  const bannerHtml = beamSession ? `
+    <div class="beam-banner">
+      <div>
+        <div class="lbl">Active beam</div>
+        <div class="id">${beamSession.beamId}</div>
+      </div>
+      <div class="seqchip">seq ${beamSession.seq}</div>
+    </div>` : '';
+
+  const loomLocked = !!beamSession;
+
+  shell({
+    title:`${PLANTS[plant].label} · Scan new beam`, back:`plant/${plant}/weaving`, right: await userChip(),
+    content: `
+      ${bannerHtml}
+      <div class="card">
+        <h3>${beamSession ? 'Add loom / order to this beam' : 'Start a new beam'}</h3>
+        <div class="desc">${beamSession ? 'Loom no. is fixed for this beam — scan the next grey order.' : 'Scan the loom no. and grey order to create a new beam ID.'}</div>
+
+        <div class="field">
+          <label>Loom no.</label>
+          <div class="field-with-scan">
+            <input id="loomNo" class="scan-input${loomLocked?' locked':''}" inputmode="numeric"
+              value="${loomLocked?beamSession.loomNo:''}" ${loomLocked?'disabled':'autofocus'}
+              onkeydown="if(event.key==='Enter'){event.preventDefault(); document.getElementById('greyOrder').focus();}">
+            ${loomLocked?'':`<button type="button" class="scan-btn" onclick="openBarcodeScanner('loomNo', {advanceTo:'greyOrder'})" aria-label="Scan loom no.">${SCAN_ICON}</button>`}
+          </div>
+          <div class="hint">${loomLocked?'Locked to this beam — scan complete to change loom.':'Valid ranges: '+loomRangeHint(plant)}</div>
+          <div id="loomNoErr"></div>
+        </div>
+
+        <div class="field">
+          <label>Grey order</label>
+          <div class="field-with-scan">
+            <input id="greyOrder" class="scan-input" inputmode="numeric" ${loomLocked?'autofocus':''}
+              onkeydown="if(event.key==='Enter'){event.preventDefault(); saveBeamEntry();}">
+            <button type="button" class="scan-btn" onclick="openBarcodeScanner('greyOrder', {onScanned:'saveBeamEntry'})" aria-label="Scan grey order">${SCAN_ICON}</button>
+          </div>
+          <div class="hint">Valid range: ${greyRangeHint(plant)}</div>
+          <div id="greyOrderErr"></div>
+        </div>
+
+        <div class="field">
+          <label>Beam mounting date & time</label>
+          <div class="dt-row">
+            <input id="mountDT" type="datetime-local" class="text-input" value="${nowStamp()}" disabled>
+            <button id="dtToggle" class="dt-toggle" onclick="toggleDT('mountDT')">Auto</button>
+          </div>
+          <div class="hint">Auto-stamps to now — tap to edit if the mount happened earlier.</div>
+        </div>
+
+        <button class="btn btn-primary" onclick="saveBeamEntry()">Save</button>
+      </div>
+
+      ${beamSession ? `
+      <div class="btn-row">
+        <button class="btn btn-outline" onclick="addAnotherBeamEntry()">Add knotting beam / order</button>
+        <button class="btn btn-teal" onclick="completeBeamScan()">Scan complete</button>
+      </div>
+      <div class="card" style="margin-top:14px;">
+        <h3 style="margin-bottom:10px;">Entries on ${beamSession.beamId}</h3>
+        <div id="beamEntryList"></div>
+      </div>` : ''}
+    `
+  });
+
+  if(beamSession) refreshBeamEntryList(plant);
+};
+
+async function refreshBeamEntryList(plant){
+  if(!beamSession) return;
+  const entries = await loadAll(`${plant}:beamentry:${beamSession.beamId}:`, false);
+  entries.sort((a,b)=>a.seq-b.seq);
+  const el = document.getElementById('beamEntryList');
+  if(!el) return;
+  if(!entries.length){ el.innerHTML = `<div style="font-size:13px;color:var(--ink-soft)">No entries saved yet.</div>`; return; }
+  el.innerHTML = entries.map(e=>`
+    <div class="entry-row">
+      <div class="l">Seq ${e.seq} · Loom ${e.loomNo}</div>
+      <div class="r">${e.greyOrder}</div>
+    </div>`).join('');
+}
+
+async function saveBeamEntry(){
+  const plant = currentPlant;
+  const loomNo = beamSession ? beamSession.loomNo : document.getElementById('loomNo').value.trim();
+  const greyOrder = document.getElementById('greyOrder').value.trim();
+  const loomNoErr = document.getElementById('loomNoErr');
+  const greyOrderErr = document.getElementById('greyOrderErr');
+  const loomInput = document.getElementById('loomNo');
+  const greyInput = document.getElementById('greyOrder');
+  loomNoErr.innerHTML=''; greyOrderErr.innerHTML='';
+  loomInput.classList.remove('bad'); greyInput.classList.remove('bad');
+
+  let ok = true;
+  if(!validLoomNo(plant, loomNo)){
+    loomNoErr.innerHTML = `<div class="err">Loom no. must be ${loomRangeHint(plant)}.</div>`;
+    loomInput.classList.add('bad'); ok=false;
+  }
+  if(!validGreyOrder(plant, greyOrder)){
+    greyOrderErr.innerHTML = `<div class="err">Grey order must be ${greyRangeHint(plant)}.</div>`;
+    greyInput.classList.add('bad'); ok=false;
+  }
+  if(ok && !beamSession){
+    const busyBeamId = await findBusyBeamOnLoom(plant, loomNo);
+    if(busyBeamId){
+      loomNoErr.innerHTML = `<div class="err">First, please finish previous order. Loom ${loomNo} still has ${busyBeamId} running.</div>`;
+      loomInput.classList.add('bad'); ok=false;
+    }
+  }
+  if(ok){
+    const dupRec = await Storage.get(`${plant}:greyorder-index:${greyOrder}`, false);
+    if(dupRec){
+      greyOrderErr.innerHTML = `<div class="err">This grey order has already been scanned. Duplicate scan not allowed.</div>`;
+      greyInput.classList.add('bad'); ok=false;
+    }
+  }
+  const userId = await requireUser();
+  if(!userId) ok=false;
+  if(!ok) return;
+
+  if(!beamSession){
+    const beamId = await nextBeamId(plant);
+    beamSession = {beamId, seq:1, loomNo};
+  } else {
+    beamSession.seq += 1;
+  }
+  await Storage.set(`${plant}:activeBeamSession`, JSON.stringify(beamSession), false);
+
+  const mountDT = document.getElementById('mountDT').value || nowStamp();
+  const entry = {
+    beamId: beamSession.beamId, seq: beamSession.seq, loomNo, greyOrder,
+    mountDT, userId, savedAt: nowStamp()
+  };
+  await Storage.set(`${plant}:beamentry:${beamSession.beamId}:${beamSession.seq}`, JSON.stringify(entry), false);
+  // index grey orders that have been beam-scanned: validates Start loom order scan, and blocks duplicate scans
+  await Storage.set(`${plant}:greyorder-index:${greyOrder}`, JSON.stringify({greyOrder, beamId: beamSession.beamId, loomNo, status:'mounted'}), false);
+
+  await tryAutoRemoveFromFloor(plant, greyOrder);
+
+  toast(`Saved · ${beamSession.beamId} seq ${beamSession.seq}`);
+  plantRoutes['weaving/scan-new-beam'](plant);
+}
+
+async function addAnotherBeamEntry(){
+  const plant = currentPlant;
+  await plantRoutes['weaving/scan-new-beam'](plant);
+  const g = document.getElementById('greyOrder');
+  if(g){ g.value=''; g.focus(); }
+}
+
+async function completeBeamScan(){
+  const plant = currentPlant;
+  if(!beamSession) return;
+  await Storage.set(`${plant}:beam-complete:${beamSession.beamId}`, JSON.stringify({beamId:beamSession.beamId, entries:beamSession.seq, completedAt: nowStamp()}), false);
+  await Storage.delete(`${plant}:activeBeamSession`, false);
+  beamSession = null;
+  toast('Beam scan complete');
+  go(`plant/${plant}/weaving`);
+}
+
+/* =========================================================
+   B. START LOOM ORDER SCAN
+   ========================================================= */
+plantRoutes['weaving/start-loom-scan'] = async function(plant){
+  shell({
+    title:`${PLANTS[plant].label} · Start loom order scan`, back:`plant/${plant}/weaving`, right: await userChip(),
+    content: `
+      <div class="card">
+        <h3>Put an order on the loom</h3>
+        <div class="desc">The grey order must already exist in Scan new beam.</div>
+
+        <div class="field">
+          <label>Grey order</label>
+          <div class="field-with-scan">
+            <input id="greyOrder" class="scan-input" inputmode="numeric" autofocus
+              onkeydown="if(event.key==='Enter'){event.preventDefault(); document.getElementById('loomRpm').focus();}">
+            <button type="button" class="scan-btn" onclick="openBarcodeScanner('greyOrder', {advanceTo:'loomRpm'})" aria-label="Scan grey order">${SCAN_ICON}</button>
+          </div>
+          <div class="hint">Valid range: ${greyRangeHint(plant)}</div>
+          <div id="greyOrderErr"></div>
+        </div>
+
+        <div class="field">
+          <label>Loom RPM</label>
+          <input id="loomRpm" class="text-input" inputmode="numeric">
+        </div>
+
+        <div class="field">
+          <label>Efficiency %</label>
+          <input id="efficiency" class="text-input" inputmode="numeric" value="85">
+          <div class="hint">Defaults to 85 — edit if this order runs differently.</div>
+        </div>
+
+        <div class="field">
+          <label>Shift</label>
+          <div class="seg" id="shiftSeg">
+            <button data-v="A" onclick="pickSeg('shiftSeg',this)">A</button>
+            <button data-v="B" onclick="pickSeg('shiftSeg',this)">B</button>
+            <button data-v="C" onclick="pickSeg('shiftSeg',this)">C</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Change over type</label>
+          <div class="seg" id="changeoverSeg">
+            <button data-v="Gaiting" onclick="pickSeg('changeoverSeg',this)">Gaiting</button>
+            <button data-v="Knotting" onclick="pickSeg('changeoverSeg',this)">Knotting</button>
+            <button data-v="Knot-Pass" onclick="pickSeg('changeoverSeg',this)">Knot-Pass</button>
+            <button data-v="Matching Change" onclick="pickSeg('changeoverSeg',this)">Matching</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Date & time</label>
+          <div class="dt-row">
+            <input id="startDT" type="datetime-local" class="text-input" value="${nowStamp()}" disabled>
+            <button id="dtToggle" class="dt-toggle" onclick="toggleDT('startDT')">Auto</button>
+          </div>
+        </div>
+
+        <button class="btn btn-primary" onclick="saveStartLoomScan()">Save</button>
+      </div>`
+  });
+};
+async function saveStartLoomScan(){
+  const plant = currentPlant;
+  const greyOrder = document.getElementById('greyOrder').value.trim();
+  const errEl = document.getElementById('greyOrderErr');
+  const greyInput = document.getElementById('greyOrder');
+  errEl.innerHTML=''; greyInput.classList.remove('bad');
+
+  if(!validGreyOrder(plant, greyOrder)){
+    errEl.innerHTML = `<div class="err">Grey order must be ${greyRangeHint(plant)}.</div>`;
+    greyInput.classList.add('bad'); return;
+  }
+  const existsRec = await Storage.get(`${plant}:greyorder-index:${greyOrder}`, false);
+  if(!existsRec){
+    errEl.innerHTML = `<div class="err">This grey order hasn't been scanned in "Scan new beam" yet.</div>`;
+    greyInput.classList.add('bad'); return;
+  }
+  const runningRec = await Storage.get(`${plant}:looporder:${greyOrder}`, false);
+  if(runningRec){
+    let r=null; try{ r = JSON.parse(runningRec.value); }catch(e){}
+    if(r && r.status==='running'){
+      errEl.innerHTML = `<div class="err">This order is already running on a loom. Duplicate scan not allowed.</div>`;
+      greyInput.classList.add('bad'); return;
+    }
+    if(r && r.status==='finished'){
+      errEl.innerHTML = `<div class="err">This order has already run and finished. Duplicate scan not allowed.</div>`;
+      greyInput.classList.add('bad'); return;
+    }
+  }
+
+  const shiftBtn = document.querySelector('#shiftSeg button.active');
+  const coBtn = document.querySelector('#changeoverSeg button.active');
+  if(!shiftBtn){ toast('Pick a shift', true); return; }
+  if(!coBtn){ toast('Pick a change over type', true); return; }
+  const userId = await requireUser();
+  if(!userId) return;
+
+  const rec = {
+    greyOrder,
+    loomRpm: document.getElementById('loomRpm').value.trim(),
+    efficiency: document.getElementById('efficiency').value.trim() || '85',
+    shift: shiftBtn.dataset.v,
+    changeoverType: coBtn.dataset.v,
+    userId,
+    startDT: document.getElementById('startDT').value || nowStamp(),
+    status:'running'
+  };
+  await Storage.set(`${plant}:looporder:${greyOrder}`, JSON.stringify(rec), false);
+  await Storage.set(`${plant}:changeoverlog:${greyOrder}:${Date.now()}`, JSON.stringify(rec), false);
+  toast('Loom order started');
+  go(`plant/${plant}/weaving`);
+}
+
+/* =========================================================
+   C. FINISH ORDER SCAN
+   ========================================================= */
+plantRoutes['weaving/finish-order-scan'] = async function(plant){
+  shell({
+    title:`${PLANTS[plant].label} · Finish order scan`, back:`plant/${plant}/weaving`, right: await userChip(),
+    content: `
+      <div class="card">
+        <h3>Close out a running order</h3>
+        <div class="desc">The grey order must currently be running (from Start loom order scan).</div>
+
+        <div class="field">
+          <label>Grey order</label>
+          <div class="field-with-scan">
+            <input id="greyOrder" class="scan-input" inputmode="numeric" autofocus
+              onkeydown="if(event.key==='Enter'){event.preventDefault(); saveFinishScan();}">
+            <button type="button" class="scan-btn" onclick="openBarcodeScanner('greyOrder', {onScanned:'saveFinishScan'})" aria-label="Scan grey order">${SCAN_ICON}</button>
+          </div>
+          <div id="greyOrderErr"></div>
+        </div>
+
+        <div class="field">
+          <label>Date & time</label>
+          <div class="dt-row">
+            <input id="finishDT" type="datetime-local" class="text-input" value="${nowStamp()}" disabled>
+            <button id="dtToggle" class="dt-toggle" onclick="toggleDT('finishDT')">Auto</button>
+          </div>
+        </div>
+
+        <button class="btn btn-primary" onclick="saveFinishScan()">Save</button>
+      </div>`
+  });
+};
+async function saveFinishScan(){
+  const plant = currentPlant;
+  const greyOrder = document.getElementById('greyOrder').value.trim();
+  const errEl = document.getElementById('greyOrderErr');
+  const greyInput = document.getElementById('greyOrder');
+  errEl.innerHTML=''; greyInput.classList.remove('bad');
+
+  if(!validGreyOrder(plant, greyOrder)){
+    errEl.innerHTML = `<div class="err">Grey order must be ${greyRangeHint(plant)}.</div>`;
+    greyInput.classList.add('bad'); return;
+  }
+  const rec = await Storage.get(`${plant}:looporder:${greyOrder}`, false);
+  if(!rec){
+    errEl.innerHTML = `<div class="err">This grey order was never started on a loom.</div>`;
+    greyInput.classList.add('bad'); return;
+  }
+  let data; try{ data = JSON.parse(rec.value); }catch(e){ data=null; }
+  if(!data || data.status==='finished'){
+    errEl.innerHTML = `<div class="err">This order has already been finished. Duplicate scan not allowed.</div>`;
+    greyInput.classList.add('bad'); return;
+  }
+  if(data.status!=='running'){
+    errEl.innerHTML = `<div class="err">This order isn't currently running.</div>`;
+    greyInput.classList.add('bad'); return;
+  }
+  const userId = await requireUser();
+  if(!userId) return;
+
+  data.status = 'finished';
+  data.finishUserId = userId;
+  data.finishDT = document.getElementById('finishDT').value || nowStamp();
+  await Storage.set(`${plant}:looporder:${greyOrder}`, JSON.stringify(data), false);
+  await Storage.set(`${plant}:beamfall:${greyOrder}:${Date.now()}`, JSON.stringify(data), false);
+  toast('Order finished');
+  go(`plant/${plant}/weaving`);
+}
+
+/* =========================================================
+   D. LOOM SHED ALL DATA
+   ========================================================= */
+plantRoutes['weaving/loom-shed-data'] = async function(plant){
+  shell({
+    title:`${PLANTS[plant].label} · Loom shed all data`, back:`plant/${plant}/weaving`, wide:true,
+    content: `<div id="statArea"></div><div id="sapNote"></div><div id="dataArea-loomshed"><div class="empty"><div class="ic">\u23F3</div><div class="t">Loading\u2026</div></div></div>`
+  });
+  const beamEntries = await loadAll(`${plant}:beamentry:`, false);
+  const loomOrders = await loadAll(`${plant}:looporder:`, false);
+  const looporderByGrey = {}; loomOrders.forEach(o=>looporderByGrey[o.greyOrder]=o);
+  beamEntries.forEach(e=>{ e.__sapKey = e.greyOrder; });
+
+  const sapInfo = await fetchSapSheet(plant, 'grey');
+  const headerMap = buildHeaderMap(sapInfo.headers, 'grey');
+  document.getElementById('sapNote').innerHTML = sapSyncNote(sapInfo, SAP_SHEET_LABEL[plant].grey, headerMap, 'grey')
+    + `<div class="report-toolbar" style="border:none; background:none; padding:0; margin-bottom:12px;"><button class="btn btn-outline btn-sm" onclick="openReviseRpmEffByScan('${plant}', ()=>plantRoutes['weaving/loom-shed-data']('${plant}'))">Revise RPM/Eff by scan</button></div>`;
+  const sapMap = sapMapByOrder(sapInfo.rows, headerMap, 'grey');
+
+  // Group by beam, run the production/projection chain per beam (in
+  // parallel — each beam's computation is independent), and attach the
+  // computed fields onto each beam entry for display.
+  const byBeam = {};
+  beamEntries.forEach(e=>{ (byBeam[e.beamId] = byBeam[e.beamId]||[]).push(e); });
+  await Promise.all(Object.keys(byBeam).map(async (beamId) => {
+    const entries = byBeam[beamId].slice().sort((a,b)=>a.seq-b.seq);
+    const { results, beamStatus } = await computeBeamSequences(plant, beamId, entries, looporderByGrey, sapMap, headerMap);
+    const byGreyResult = {}; results.forEach(r=>byGreyResult[r.greyOrder]=r);
+    entries.forEach(e=>{
+      const r = byGreyResult[e.greyOrder];
+      e.__actualStart = r?.actualStart || null;
+      e.__projectedStart = r?.projectedStart || null;
+      e.__actualFall = r?.actualFall || null;
+      e.__projectedFall = r?.projectedFall || null;
+      e.__isTentative = r?.isTentative || false;
+      e.__finalRunout = r?.finalRunout || null;
+      e.__finalRunoutIsTentative = r?.finalRunoutIsTentative || false;
+      e.__qualityStatus = r?.qualityStatus || '\u2014';
+      e.__beamStatus = beamStatus;
+      e.__effRpm = r?.effRpm || null;
+      e.__effEff = r?.effEff || null;
+      e.__prodPerDay = r?.prodPerDay || null;
+      e.__shift = r?.shift || null;
+      e.__changeoverType = r?.changeoverType || null;
+    });
+  }));
+
+  document.getElementById('statArea').innerHTML = beamEntries.length ? `
+    <div class="stat-row">
+      <div class="stat"><div class="n">${beamEntries.length}</div><div class="l">Beam entries</div></div>
+      <div class="stat"><div class="n">${loomOrders.filter(o=>o.status==='running').length}</div><div class="l">Looms running</div></div>
+      <div class="stat"><div class="n">${new Set(beamEntries.map(e=>e.loomNo)).size}</div><div class="l">Looms touched</div></div>
+    </div>` : '';
+
+  renderReport('dataArea-loomshed', beamEntries, [
+    {key:'beamId', label:'Beam ID', get:r=>r.beamId},
+    {key:'seq', label:'Seq', get:r=>r.seq, numeric:true},
+    {key:'loomNo', label:'Loom', get:r=>r.loomNo, numeric:true},
+    {key:'loomType', label:'Loom type', get:r=>getLoomType(plant, r.loomNo)},
+    {key:'greyOrder', label:'Grey order', get:r=>r.greyOrder},
+    {key:'mountDT', label:'Mounted', get:r=>r.mountDT, render:r=>fmtDT(r.mountDT), date:true},
+    {key:'__qualityStatus', label:'Quality status', get:r=>r.__qualityStatus, render:r=>qualityPill(r.__qualityStatus)},
+    {key:'__beamStatus', label:'Beam status', get:r=>r.__beamStatus, render:r=>beamStatusPill(r.__beamStatus)},
+    {key:'__effRpm', label:'Loom RPM', get:r=>r.__effRpm, numeric:true, render:r=> `${r.__effRpm ?? '\u2014'} <button class="btn btn-sm btn-outline" style="display:inline-flex; width:auto; vertical-align:middle; margin-left:6px;" onclick="openSeqOverrideModal('${plant}','${r.beamId}',${r.seq},'${r.__effRpm||''}','${r.__effEff||''}', ()=>plantRoutes['weaving/loom-shed-data']('${plant}'))">Edit</button>`},
+    {key:'__effEff', label:'Efficiency %', get:r=>r.__effEff, numeric:true},
+    {key:'__prodPerDay', label:'Production per day', get:r=>r.__prodPerDay, numeric:true, render:r=> r.__prodPerDay!=null ? r.__prodPerDay.toFixed(1) : '\u2014'},
+    {key:'__shift', label:'Loom actual start shift', get:r=>r.__shift, render:r=>r.__shift||'\u2014'},
+    {key:'__changeoverType', label:'Change over type', get:r=>r.__changeoverType, render:r=>r.__changeoverType||'\u2014'},
+    {key:'__actualStart', label:'Actual start date/time', get:r=>r.__actualStart, render:r=>fmtDT(r.__actualStart), date:true},
+    {key:'__projectedStart', label:'Projected loom start date/time', get:r=>r.__projectedStart, render:r=>fmtDT(r.__projectedStart), date:true},
+    {key:'__actualFall', label:'Actual beam fall date/time', get:r=>r.__actualFall, render:r=>fmtDT(r.__actualFall), date:true},
+    {key:'__projectedFall', label:'Projected beam fall date/time', get:r=>r.__projectedFall, render:r=>fmtDTMaybeTentative(r.__projectedFall, r.__isTentative), date:true},
+    {key:'__finalRunout', label:'Final beam runout date/time', get:r=>r.__finalRunout, render:r=>fmtDTMaybeTentative(r.__finalRunout, r.__finalRunoutIsTentative), date:true},
+    {key:'userId', label:'User', get:r=>r.userId},
+    ...sapExtraColumns(sapMap, headerMap, 'grey'),
+  ], {
+    reportKey:'loomshed',
+    defaultSortKey:'beamId', defaultSortDir:'asc',
+    searchPlaceholder:'Search beam ID, loom, grey order, user\u2026',
+    emptyIcon:'\uD83E\uDDF5', emptyTitle:'No beam data yet', emptyDesc:'Scan a new beam to start building the loom shed record.',
+    deletable:true,
+    onDeleteRows: async (rows)=>{ for(const r of rows){ await deleteByStorageKey(r); } },
+    onDeleted: ()=>plantRoutes['weaving/loom-shed-data'](plant),
+  });
+};
+
+/* =========================================================
+   E. RUNNING LOOM STATUS
+   ========================================================= */
+plantRoutes['weaving/running-loom-status'] = async function(plant){
+  shell({title:`${PLANTS[plant].label} · Running loom status`, back:`plant/${plant}/weaving`, content:`<div id="sapNote"></div><div id="dataArea-runningloom"></div>`, wide:true});
+  const orders = (await loadAll(`${plant}:looporder:`, false)).filter(o=>o.status==='running');
+  const giList = await loadAll(`${plant}:greyorder-index:`, false);
+  const giByGrey = {}; giList.forEach(g=>giByGrey[g.greyOrder]=g);
+  orders.forEach(o=>{
+    const gi = giByGrey[o.greyOrder];
+    o.__loomNo = gi ? gi.loomNo : null;
+    o.__pending = !!(gi && gi.status==='cut-pending');
+    o.__sapKey = o.greyOrder;
+  });
+
+  const sapInfo = await fetchSapSheet(plant, 'grey');
+  const headerMap = buildHeaderMap(sapInfo.headers, 'grey');
+  document.getElementById('sapNote').innerHTML = sapSyncNote(sapInfo, SAP_SHEET_LABEL[plant].grey, headerMap, 'grey');
+  const sapMap = sapMapByOrder(sapInfo.rows, headerMap, 'grey');
+
+  renderReport('dataArea-runningloom', orders, [
+    {key:'__loomNo', label:'Loom', get:r=>r.__pending?-1:r.__loomNo, numeric:true, render:r=> r.__pending ? '<span class="pill pill-open">Cut · pending loom</span>' : (r.__loomNo ?? '—')},
+    {key:'loomType', label:'Loom type', get:r=> r.__pending ? '' : getLoomType(plant, r.__loomNo)},
+    {key:'greyOrder', label:'Grey order', get:r=>r.greyOrder},
+    {key:'loomRpm', label:'RPM', get:r=>r.loomRpm, numeric:true, render:r=>r.loomRpm||'—'},
+    {key:'efficiency', label:'Eff. %', get:r=>r.efficiency, numeric:true},
+    {key:'shift', label:'Shift', get:r=>r.shift},
+    {key:'startDT', label:'Started', get:r=>r.startDT, render:r=>fmtDT(r.startDT), date:true},
+    ...sapExtraColumns(sapMap, headerMap, 'grey'),
+  ], {
+    reportKey:'runningloom',
+    defaultSortKey:'startDT', defaultSortDir:'desc',
+    searchPlaceholder:'Search loom, grey order, shift…',
+    emptyIcon:'🟢', emptyTitle:'No looms running', emptyDesc:'Orders started via "Start loom order scan" will show up here.',
+    deletable:true,
+    onDeleteRows: async (rows)=>{ for(const r of rows){ await deleteByStorageKey(r); } },
+    onDeleted: ()=>plantRoutes['weaving/running-loom-status'](plant),
+  });
+};
+
+/* =========================================================
+   F. RUNNING QUALITY STATUS
+   ========================================================= */
+plantRoutes['weaving/running-quality-status'] = async function(plant){
+  shell({title:`${PLANTS[plant].label} · Running quality status`, back:`plant/${plant}/weaving`, content:`<div id="statArea"></div><div id="sapNote"></div><div id="dataArea-quality"></div>`, wide:true});
+  const orders = (await loadAll(`${plant}:looporder:`, false)).filter(o=>o.status==='running');
+  const giQ = {}; (await loadAll(`${plant}:greyorder-index:`, false)).forEach(g=>giQ[g.greyOrder]=g);
+  orders.forEach(o=>{ o.__sapKey = o.greyOrder; const g=giQ[o.greyOrder]; o.__pending = !!(g && g.status==='cut-pending'); o.__loomNo = g ? g.loomNo : null; });
+
+  document.getElementById('statArea').innerHTML = orders.length ? (()=>{
+    const avgEff = (orders.reduce((s,o)=>s+(parseFloat(o.efficiency)||0),0)/orders.length).toFixed(1);
+    const avgRpm = (orders.reduce((s,o)=>s+(parseFloat(o.loomRpm)||0),0)/orders.length).toFixed(0);
+    return `<div class="stat-row">
+      <div class="stat"><div class="n">${orders.length}</div><div class="l">Running</div></div>
+      <div class="stat"><div class="n">${avgRpm}</div><div class="l">Avg RPM</div></div>
+      <div class="stat"><div class="n">${avgEff}%</div><div class="l">Avg efficiency</div></div>
+    </div>`;
+  })() : '';
+
+  const sapInfo = await fetchSapSheet(plant, 'grey');
+  const headerMap = buildHeaderMap(sapInfo.headers, 'grey');
+  document.getElementById('sapNote').innerHTML = sapSyncNote(sapInfo, SAP_SHEET_LABEL[plant].grey, headerMap, 'grey');
+  const sapMap = sapMapByOrder(sapInfo.rows, headerMap, 'grey');
+
+  renderReport('dataArea-quality', orders, [
+    {key:'__loomNo', label:'Loom', get:r=>r.__pending?-1:r.__loomNo, numeric:true, render:r=> r.__pending ? '<span class="pill pill-open">Cut · pending loom</span>' : (r.__loomNo ?? '—')},
+    {key:'loomType', label:'Loom type', get:r=> r.__pending ? '' : getLoomType(plant, r.__loomNo)},
+    {key:'greyOrder', label:'Grey order', get:r=>r.greyOrder},
+    {key:'loomRpm', label:'RPM', get:r=>r.loomRpm, numeric:true, render:r=>r.loomRpm||'—'},
+    {key:'efficiency', label:'Efficiency %', get:r=>r.efficiency, numeric:true},
+    {key:'shift', label:'Shift', get:r=>r.shift},
+    ...sapExtraColumns(sapMap, headerMap, 'grey'),
+  ], {
+    reportKey:'quality',
+    defaultSortKey:'efficiency', defaultSortDir:'desc',
+    searchPlaceholder:'Search grey order, shift…',
+    emptyIcon:'📊', emptyTitle:'No running orders', emptyDesc:'RPM and efficiency for running orders will show up here.',
+    deletable:true,
+    onDeleteRows: async (rows)=>{ for(const r of rows){ await deleteByStorageKey(r); } },
+    onDeleted: ()=>plantRoutes['weaving/running-quality-status'](plant),
+  });
+};
+
+/* =========================================================
+   G. CHANGE OVER DATA
+   ========================================================= */
+plantRoutes['weaving/changeover-data'] = async function(plant){
+  shell({title:`${PLANTS[plant].label} · Change over data`, back:`plant/${plant}/weaving`, content:`<div id="sapNote"></div><div id="dataArea-changeover"></div>`, wide:true});
+  const logs = await loadAll(`${plant}:changeoverlog:`, false);
+  const giC = {}; (await loadAll(`${plant}:greyorder-index:`, false)).forEach(g=>giC[g.greyOrder]=g);
+  logs.forEach(l=>{ l.__sapKey = l.greyOrder; const g=giC[l.greyOrder]; l.__pending = !!(g && g.status==='cut-pending'); l.__loomNo = g ? g.loomNo : null; });
+
+  const sapInfo = await fetchSapSheet(plant, 'grey');
+  const headerMap = buildHeaderMap(sapInfo.headers, 'grey');
+  document.getElementById('sapNote').innerHTML = sapSyncNote(sapInfo, SAP_SHEET_LABEL[plant].grey, headerMap, 'grey');
+  const sapMap = sapMapByOrder(sapInfo.rows, headerMap, 'grey');
+
+  renderReport('dataArea-changeover', logs, [
+    {key:'__loomNo', label:'Loom', get:r=>r.__pending?-1:r.__loomNo, numeric:true, render:r=> r.__pending ? '<span class="pill pill-open">Cut · pending loom</span>' : (r.__loomNo ?? '—')},
+    {key:'loomType', label:'Loom type', get:r=> r.__pending ? '' : getLoomType(plant, r.__loomNo)},
+    {key:'greyOrder', label:'Grey order', get:r=>r.greyOrder},
+    {key:'changeoverType', label:'Type', get:r=>r.changeoverType},
+    {key:'shift', label:'Shift', get:r=>r.shift},
+    {key:'userId', label:'User', get:r=>r.userId},
+    {key:'startDT', label:'When', get:r=>r.startDT, render:r=>fmtDT(r.startDT), date:true},
+    ...sapExtraColumns(sapMap, headerMap, 'grey'),
+  ], {
+    reportKey:'changeover',
+    defaultSortKey:'startDT', defaultSortDir:'desc',
+    searchPlaceholder:'Search grey order, type, shift, user…',
+    emptyIcon:'🔁', emptyTitle:'No change overs logged', emptyDesc:'Every "Start loom order scan" entry logs a change over here.',
+    deletable:true,
+    onDeleteRows: async (rows)=>{ for(const r of rows){ await deleteByStorageKey(r); } },
+    onDeleted: ()=>plantRoutes['weaving/changeover-data'](plant),
+  });
+};
+
+/* =========================================================
+   H. BEAM FALL STATUS
+   ========================================================= */
+plantRoutes['weaving/beam-fall-status'] = async function(plant){
+  shell({title:`${PLANTS[plant].label} · Beam fall status`, back:`plant/${plant}/weaving`, content:`<div id="sapNote"></div><div id="dataArea-beamfall"></div>`, wide:true});
+
+  const beamEntries = await loadAll(`${plant}:beamentry:`, false);
+  const loomOrders = await loadAll(`${plant}:looporder:`, false);
+  const looporderByGrey = {}; loomOrders.forEach(o=>looporderByGrey[o.greyOrder]=o);
+
+  const sapInfo = await fetchSapSheet(plant, 'grey');
+  const headerMap = buildHeaderMap(sapInfo.headers, 'grey');
+  document.getElementById('sapNote').innerHTML = sapSyncNote(sapInfo, SAP_SHEET_LABEL[plant].grey, headerMap, 'grey');
+  const sapMap = sapMapByOrder(sapInfo.rows, headerMap, 'grey');
+
+  // One row per beam: the LAST sequence is the one whose finish decides
+  // when the whole beam falls off the loom.
+  const byBeam = {};
+  beamEntries.forEach(e=>{ (byBeam[e.beamId] = byBeam[e.beamId]||[]).push(e); });
+
+  const rows = [];
+  await Promise.all(Object.keys(byBeam).map(async (beamId) => {
+    const entries = byBeam[beamId].slice().sort((a,b)=>a.seq-b.seq);
+    const { results, beamStatus } = await computeBeamSequences(plant, beamId, entries, looporderByGrey, sapMap, headerMap);
+    if(!results.length) return;
+    const last = results[results.length-1];
+    const lastEntry = entries[entries.length-1];
+    rows.push({
+      plantLabel: PLANTS[plant].label,
+      beamId,
+      loomNo: lastEntry.loomNo,
+      greyOrder: last.greyOrder,
+      qualityStatus: last.qualityStatus,
+      beamStatus,
+      actualFall: last.actualFall,
+      projectedFall: last.projectedFall,
+      isTentative: last.isTentative,
+      finalRunout: last.finalRunout,
+      finalRunoutIsTentative: last.finalRunoutIsTentative,
+      __sapKey: last.greyOrder,
+    });
+  }));
+
+  // Feature the specifically-requested columns first; every other SAP
+  // field still comes along after, ready to reorder via Manage columns.
+  const sapCols = sapExtraColumns(sapMap, headerMap, 'grey');
+  const pluck = (key) => { const i = sapCols.findIndex(c=>c.key===key); return i>=0 ? sapCols.splice(i,1)[0] : null; };
+  const finalQicCol = pluck('sap__FINAL_QIC');
+  const chartCol = pluck('sap__CHART_DESIGN');
+  const reedCol = pluck('sap__REED');
+  const rsCol = pluck('sap__RS');
+
+  renderReport('dataArea-beamfall', rows, [
+    {key:'plantLabel', label:'Plant', get:r=>r.plantLabel},
+    {key:'beamId', label:'Beam ID', get:r=>r.beamId},
+    {key:'loomNo', label:'Loom', get:r=>r.loomNo, numeric:true},
+    {key:'loomType', label:'Loom type', get:r=>getLoomType(plant, r.loomNo)},
+    {key:'greyOrder', label:'Grey order (finishing last)', get:r=>r.greyOrder},
+    ...(finalQicCol?[finalQicCol]:[]),
+    ...(chartCol?[chartCol]:[]),
+    ...(reedCol?[reedCol]:[]),
+    ...(rsCol?[rsCol]:[]),
+    {key:'finalRunout', label:'Final beam runout date/time', get:r=>r.finalRunout, render:r=>fmtDTMaybeTentative(r.finalRunout, r.finalRunoutIsTentative), date:true},
+    {key:'qualityStatus', label:'Quality status', get:r=>r.qualityStatus, render:r=>qualityPill(r.qualityStatus)},
+    {key:'beamStatus', label:'Beam status', get:r=>r.beamStatus, render:r=>beamStatusPill(r.beamStatus)},
+    {key:'actualFall', label:'Actual beam fall date/time', get:r=>r.actualFall, render:r=>fmtDT(r.actualFall), date:true},
+    {key:'projectedFall', label:'Projected beam fall date/time', get:r=>r.projectedFall, render:r=>fmtDTMaybeTentative(r.projectedFall, r.isTentative), date:true},
+    ...sapCols,
+  ], {
+    reportKey:'beamfall',
+    defaultSortKey:'beamId', defaultSortDir:'asc',
+    searchPlaceholder:'Search beam ID, loom, grey order…',
+    emptyIcon:'🏁', emptyTitle:'No beams yet', emptyDesc:'Scan a new beam to see projected runout dates here.',
+  });
+};
+
+/* =========================================================
+   K. AVERAGE BEAM LENGTH
+   Warping Mtr (beam length) = Order Qty x 1.08, summed across every
+   sequence knotted onto a Beam ID, keyed by the beam's mounting date.
+   ========================================================= */
+let __avgBeamPeriod = 'month'; // 'all' | 'month' | 'lastmonth'
+
+function periodRange(period){
+  const now = new Date();
+  if(period==='month'){
+    return { from: toDateInputValue(new Date(now.getFullYear(), now.getMonth(), 1)), to: toDateInputValue(new Date(now.getFullYear(), now.getMonth()+1, 0)) };
+  }
+  if(period==='lastmonth'){
+    return { from: toDateInputValue(new Date(now.getFullYear(), now.getMonth()-1, 1)), to: toDateInputValue(new Date(now.getFullYear(), now.getMonth(), 0)) };
+  }
+  return { from:null, to:null };
+}
+function monthLabelOf(dtStr){
+  const d = parseLocalDT(dtStr);
+  if(!d) return '—';
+  const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${months[d.getMonth()]} ${d.getFullYear()}`;
+}
+async function computeAvgBeamLengthRows(plant, from, to){
+  const beamEntries = await loadAll(`${plant}:beamentry:`, false);
+  const sapInfo = await fetchSapSheet(plant, 'grey');
+  const headerMap = buildHeaderMap(sapInfo.headers, 'grey');
+  const sapMap = sapMapByOrder(sapInfo.rows, headerMap, 'grey');
+  const orderQtyCol = headerMap['ORDER QTY'];
+  const qicCol = headerMap['QIC'];
+
+  const byBeam = {};
+  beamEntries.forEach(e=>{ (byBeam[e.beamId]=byBeam[e.beamId]||[]).push(e); });
+
+  const rows = [];
+  for(const beamId in byBeam){
+    const entries = byBeam[beamId].slice().sort((a,b)=>a.seq-b.seq);
+    const seq1 = entries[0];
+    if(from || to){
+      const d = parseLocalDT(seq1.mountDT);
+      if(!d) continue;
+      if(from && d < parseLocalDT(from+'T00:00')) continue;
+      if(to && d > parseLocalDT(to+'T23:59')) continue;
+    }
+    let totalOrderQty = 0;
+    entries.forEach(e=>{
+      const sapRow = sapMap[normOrderKey(e.greyOrder)];
+      const qty = sapRow && orderQtyCol ? toNum(sapRow[orderQtyCol]) : null;
+      if(qty) totalOrderQty += qty;
+    });
+    if(!totalOrderQty) continue;
+    const sapRow1 = sapMap[normOrderKey(seq1.greyOrder)];
+    rows.push({
+      beamId, loomNo: seq1.loomNo, loomType: getLoomType(plant, seq1.loomNo),
+      mountDT: seq1.mountDT, month: monthLabelOf(seq1.mountDT),
+      qic: (sapRow1 && qicCol ? sapRow1[qicCol] : '') || '—',
+      totalOrderQty, warpingMtr: totalOrderQty*1.08,
+    });
+  }
+  return rows;
+}
+function groupAvg(rows, keyFn){
+  const groups = {};
+  rows.forEach(r=>{
+    const k = keyFn(r) || '—';
+    if(!groups[k]) groups[k] = {sum:0,count:0};
+    groups[k].sum += r.warpingMtr; groups[k].count++;
+  });
+  return Object.entries(groups).map(([label,v])=>({label, avg:v.sum/v.count, count:v.count})).sort((a,b)=>b.avg-a.avg);
+}
+function renderGroupTable(title, groups){
+  if(!groups.length) return '';
+  return `
+    <div style="flex:1; min-width:220px;">
+      <div style="font-size:11px; text-transform:uppercase; letter-spacing:.06em; font-weight:700; color:var(--ink-soft); margin-bottom:6px;">Average by ${title}</div>
+      <div class="table-wrap" style="max-height:260px; border:1px solid var(--line); border-radius:12px;">
+        <table><thead><tr><th>${title}</th><th class="num">Beams</th><th class="num">Avg Mtr</th></tr></thead>
+        <tbody>${groups.map(g=>`<tr><td>${g.label}</td><td class="num mono">${g.count}</td><td class="num mono">${g.avg.toFixed(1)}</td></tr>`).join('')}</tbody></table>
+      </div>
+    </div>`;
+}
+
+plantRoutes['weaving/avg-beam-length'] = async function(plant){
+  shell({
+    title:`${PLANTS[plant].label} · Average beam length`, back:`plant/${plant}/weaving`, wide:true,
+    content:`
+      <div class="card" style="margin-bottom:16px;">
+        <div class="desc" style="margin-bottom:10px;">Beam length is estimated as Order Qty × 1.08 (Warping Mtr), summed across every sequence knotted onto each Beam ID, filtered by that beam's mounting date.</div>
+        <div class="seg" id="avgPeriodSeg">
+          <button data-p="all" onclick="setAvgBeamPeriod('${plant}','all')">All time</button>
+          <button data-p="month" onclick="setAvgBeamPeriod('${plant}','month')">This month</button>
+          <button data-p="lastmonth" onclick="setAvgBeamPeriod('${plant}','lastmonth')">Last month</button>
+        </div>
+      </div>
+      <div id="avgBeamSummary"></div>
+      <div id="avgBeamTable"><div class="empty"><div class="ic">⏳</div><div class="t">Loading…</div></div></div>`
+  });
+  document.querySelectorAll('#avgPeriodSeg button').forEach(b=>b.classList.toggle('active', b.dataset.p===__avgBeamPeriod));
+
+  const { from, to } = periodRange(__avgBeamPeriod);
+  const rows = await computeAvgBeamLengthRows(plant, from, to);
+
+  const summaryEl = document.getElementById('avgBeamSummary');
+  summaryEl.innerHTML = rows.length ? `<div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:18px;">
+      ${renderGroupTable('Loom type', groupAvg(rows, r=>r.loomType))}
+      ${renderGroupTable('QIC', groupAvg(rows, r=>r.qic))}
+      ${renderGroupTable('Month', groupAvg(rows, r=>r.month))}
+    </div>` : '';
+
+  renderReport('avgBeamTable', rows, [
+    {key:'beamId', label:'Beam ID', get:r=>r.beamId},
+    {key:'loomNo', label:'Loom', get:r=>r.loomNo, numeric:true},
+    {key:'loomType', label:'Loom type', get:r=>r.loomType},
+    {key:'mountDT', label:'Mounted', get:r=>r.mountDT, render:r=>fmtDT(r.mountDT), date:true},
+    {key:'qic', label:'QIC', get:r=>r.qic},
+    {key:'totalOrderQty', label:'Order qty (total)', get:r=>r.totalOrderQty, numeric:true},
+    {key:'warpingMtr', label:'Warping Mtr (beam length)', get:r=>r.warpingMtr, numeric:true, render:r=>r.warpingMtr.toFixed(1)},
+  ], {
+    reportKey:'avgbeamlength',
+    defaultSortKey:'mountDT', defaultSortDir:'desc',
+    searchPlaceholder:'Search beam ID, loom type, QIC…',
+    emptyIcon:'📏', emptyTitle:'No beams in this period', emptyDesc:'Try a different period, or scan some beams first.'
+  });
+};
+async function setAvgBeamPeriod(plant, period){
+  __avgBeamPeriod = period;
+  await plantRoutes['weaving/avg-beam-length'](plant);
+}
+
+/* =========================================================
+   L. LOOM GANTT CHART
+   Loom on the Y-axis, date on the X-axis. Bars colored by quality
+   status: FINISH = dark navy, ON LOOM = green, U/Ktg = amber.
+   ========================================================= */
+function ganttColor(status){
+  if(status==='FINISH') return '#1b2430';   // dark navy
+  if(status==='ON LOOM') return '#2f6f62';  // green
+  if(status==='U/Ktg') return '#c68a2e';    // amber — distinct from navy & green
+  return '#9a917a';
+}
+
+plantRoutes['weaving/loom-gantt'] = async function(plant){
+  shell({ title:`${PLANTS[plant].label} · Loom Gantt chart`, back:`plant/${plant}/weaving`, wide:true,
+    content:`<div id="ganttArea"><div class="empty"><div class="ic">⏳</div><div class="t">Loading…</div></div></div>` });
+
+  const beamEntries = await loadAll(`${plant}:beamentry:`, false);
+  const loomOrders = await loadAll(`${plant}:looporder:`, false);
+  const looporderByGrey = {}; loomOrders.forEach(o=>looporderByGrey[o.greyOrder]=o);
+  const sapInfo = await fetchSapSheet(plant, 'grey');
+  const headerMap = buildHeaderMap(sapInfo.headers, 'grey');
+  const sapMap = sapMapByOrder(sapInfo.rows, headerMap, 'grey');
+
+  const finalQicCol = headerMap['FINAL QIC'];
+  const chartCol = headerMap['CHART-DESIGN'];
+  const shadeCol = headerMap['MKT SHADE'];
+
+  const byBeam = {};
+  beamEntries.forEach(e=>{ (byBeam[e.beamId] = byBeam[e.beamId]||[]).push(e); });
+
+  const bars = [];
+  await Promise.all(Object.keys(byBeam).map(async (beamId) => {
+    const entries = byBeam[beamId].slice().sort((a,b)=>a.seq-b.seq);
+    const { results } = await computeBeamSequences(plant, beamId, entries, looporderByGrey, sapMap, headerMap);
+    results.forEach((r, i)=>{
+      const start = r.actualStart || r.projectedStart;
+      const end = r.actualFall || r.projectedFall;
+      if(start && end){
+        const sapRow = sapMap[normOrderKey(r.greyOrder)];
+        const finalQic = sapRow && finalQicCol ? sapRow[finalQicCol] : '';
+        const chart = sapRow && chartCol ? sapRow[chartCol] : '';
+        const shade = sapRow && shadeCol ? sapRow[shadeCol] : '';
+        bars.push({ loomNo: entries[i].loomNo, beamId, greyOrder: r.greyOrder, seq: r.seq, start, end, status: r.qualityStatus, isTentative: r.isTentative, finalQic, chart, shade });
+      }
+    });
+  }));
+
+  const area = document.getElementById('ganttArea');
+  if(!bars.length){
+    area.innerHTML = emptyState('📊','No timeline yet','Scan and start some orders to see the loom Gantt chart.');
+    return;
+  }
+
+  const starts = bars.map(b=>parseLocalDT(b.start)).filter(Boolean);
+  const ends = bars.map(b=>parseLocalDT(b.end)).filter(Boolean);
+  const now = new Date();
+  let minD = new Date(Math.min(...starts, now));
+  let maxD = new Date(Math.max(...ends, now));
+  minD.setHours(0,0,0,0);
+  maxD.setHours(0,0,0,0); maxD.setDate(maxD.getDate()+1);
+  const dayMs = 86400000;
+  const dayCount = Math.max(1, Math.round((maxD - minD) / dayMs));
+  const dayWidth = 64;
+  const labelWidth = 96;
+  const totalWidth = dayCount * dayWidth;
+
+  const looms = [...new Set(bars.map(b=>b.loomNo))].sort((a,b)=>parseFloat(a)-parseFloat(b));
+  const dayLabels = [];
+  for(let i=0;i<dayCount;i++){
+    const d = new Date(minD.getTime() + i*dayMs);
+    const p = n=>String(n).padStart(2,'0');
+    dayLabels.push(`${p(d.getDate())}-${p(d.getMonth()+1)}`);
+  }
+  const todayOffsetPx = ((startOfDay(now) - minD) / dayMs) * dayWidth + (dayWidth * (now.getHours()*60+now.getMinutes())/1440);
+
+  function pxFor(dtStr){
+    const d = parseLocalDT(dtStr);
+    if(!d) return 0;
+    return ((d - minD) / dayMs) * dayWidth;
+  }
+
+  area.innerHTML = `
+    <div class="gantt-legend">
+      <span><i style="background:#1b2430;"></i> Finished</span>
+      <span><i style="background:#2f6f62;"></i> Running (ON LOOM)</span>
+      <span><i style="background:#c68a2e;"></i> Knotting (U/Ktg)</span>
+      <span><i style="background:var(--red); width:2px; border-radius:0;"></i> Today</span>
+    </div>
+    <div class="gantt-scroll">
+      <div style="width:${labelWidth+totalWidth}px; position:relative;">
+        <div class="gantt-header-row">
+          <div class="gantt-corner" style="width:${labelWidth}px; min-width:${labelWidth}px;"></div>
+          <div class="gantt-days">
+            ${dayLabels.map(d=>`<div class="gantt-daycell" style="width:${dayWidth}px;">${d}</div>`).join('')}
+          </div>
+        </div>
+        ${looms.map(loomNo=>{
+          const loomBars = bars.filter(b=>b.loomNo===loomNo);
+          return `
+          <div class="gantt-row">
+            <div class="gantt-loom-label" style="width:${labelWidth}px; min-width:${labelWidth}px;">Loom ${loomNo}</div>
+            <div class="gantt-track" style="width:${totalWidth}px;">
+              ${loomBars.map(b=>{
+                const left = pxFor(b.start);
+                const width = Math.max(pxFor(b.end) - left, 18);
+                const color = ganttColor(b.status);
+                const label = b.finalQic || b.greyOrder;
+                const tip = [
+                  `${b.greyOrder} (seq ${b.seq}) · ${b.status}${b.isTentative?' · tentative':''}`,
+                  b.finalQic ? `Final QIC: ${b.finalQic}` : '',
+                  b.chart ? `Chart design: ${b.chart}` : '',
+                  b.shade ? `Shade: ${b.shade}` : '',
+                  `${fmtDT(b.start)} \u2192 ${fmtDT(b.end)}`,
+                ].filter(Boolean).join('\n');
+                return `<div class="gantt-bar" style="left:${left}px; width:${width}px; background:${color};" title="${tip}">${label}</div>`;
+              }).join('')}
+            </div>
+          </div>`;
+        }).join('')}
+        <div class="gantt-today" style="left:${labelWidth+todayOffsetPx}px;"></div>
+      </div>
+    </div>`;
+};
+
+/* =========================================================
+   I. CUT BEAM
+   Cut one or more running grey orders off their loom(s) and
+   restart them — together or separately — on a new loom.
+   ========================================================= */
+const cutBeamItems = [
+  {k:'scan-grey-to-cut', l:'1', t:'Scan grey order to cut', s:'Mark a running order as cut off its loom'},
+  {k:'scan-new-loom', l:'2', t:'Scan new loom', s:'Restart the cut order(s) on a new loom'},
+];
+plantRoutes['weaving/cut-beam'] = function(plant){
+  shell({
+    title:`${PLANTS[plant].label} · Cut beam`, back:`plant/${plant}/weaving`,
+    content: `
+      <div class="list">
+        ${cutBeamItems.map(i=>`
+          <button class="list-item" onclick="go('plant/${plant}/weaving/cut-beam/${i.k}')">
+            <div class="letter">${i.l}</div>
+            <div class="txt"><div class="title">${i.t}</div><div class="sub">${i.s}</div></div>
+            <div class="chev">›</div>
+          </button>`).join('')}
+      </div>`
+  });
+};
+
+let cutSession = null; // {cutId, seq}
+
+plantRoutes['weaving/cut-beam/scan-grey-to-cut'] = async function(plant){
+  const active = await Storage.get(`${plant}:activeCutSession`, false);
+  cutSession = (active && active.value) ? JSON.parse(active.value) : null;
+
+  const bannerHtml = cutSession ? `
+    <div class="beam-banner">
+      <div>
+        <div class="lbl">Active cut</div>
+        <div class="id">${cutSession.cutId}</div>
+      </div>
+      <div class="seqchip">seq ${cutSession.seq}</div>
+    </div>` : '';
+
+  shell({
+    title:`${PLANTS[plant].label} · Scan grey order to cut`, back:`plant/${plant}/weaving/cut-beam`, right: await userChip(),
+    content: `
+      ${bannerHtml}
+      <div class="card">
+        <h3>${cutSession ? 'Add another order to this cut' : 'Cut a running order off its loom'}</h3>
+        <div class="desc">Any order already scanned in "Scan new beam" can be cut — running or not yet started. Finished orders can't be cut. Once cut, go to "Scan new loom" to restart it (or the whole batch) elsewhere.</div>
+
+        <div class="field">
+          <label>Grey order</label>
+          <div class="field-with-scan">
+            <input id="greyOrder" class="scan-input" inputmode="numeric" autofocus
+              onkeydown="if(event.key==='Enter'){event.preventDefault(); saveCutEntry();}">
+            <button type="button" class="scan-btn" onclick="openBarcodeScanner('greyOrder', {onScanned:'saveCutEntry'})" aria-label="Scan grey order">${SCAN_ICON}</button>
+          </div>
+          <div class="hint">Valid range: ${greyRangeHint(plant)}</div>
+          <div id="greyOrderErr"></div>
+        </div>
+
+        <div class="field">
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="checkbox" id="keepOnFloor" style="width:18px; height:18px; accent-color:var(--accent);">
+            Keep on floor
+          </label>
+          <div class="hint">Tick if this cut beam is being parked on the floor rather than restarted right away — you can still scan "Scan new loom" for it later.</div>
+        </div>
+
+        <button class="btn btn-primary" onclick="saveCutEntry()">Save</button>
+      </div>
+
+      ${cutSession ? `
+      <div class="btn-row">
+        <button class="btn btn-outline" onclick="addAnotherCutEntry()">Add knotting / order</button>
+        <button class="btn btn-teal" onclick="go('plant/${plant}/weaving/cut-beam/scan-new-loom')">Scan new loom ›</button>
+      </div>
+      <div class="card" style="margin-top:14px;">
+        <h3 style="margin-bottom:10px;">Orders cut in ${cutSession.cutId}</h3>
+        <div id="cutEntryList"></div>
+      </div>` : ''}
+    `
+  });
+
+  if(cutSession) refreshCutEntryList(plant);
+};
+
+async function refreshCutEntryList(plant){
+  if(!cutSession) return;
+  const entries = await loadAll(`${plant}:cutentry:${cutSession.cutId}:`, false);
+  entries.sort((a,b)=>a.seq-b.seq);
+  const el = document.getElementById('cutEntryList');
+  if(!el) return;
+  if(!entries.length){ el.innerHTML = `<div style="font-size:13px;color:var(--ink-soft)">No entries saved yet.</div>`; return; }
+  el.innerHTML = entries.map(e=>`
+    <div class="entry-row">
+      <div class="l">Seq ${e.seq} · cut from loom ${e.cutFromLoom||'—'}${e.keepOnFloor?' · <span class="pill pill-open">On floor</span>':''}</div>
+      <div class="r">${e.greyOrder}</div>
+    </div>`).join('');
+}
+
+async function saveCutEntry(){
+  const plant = currentPlant;
+  const greyOrder = document.getElementById('greyOrder').value.trim();
+  const errEl = document.getElementById('greyOrderErr');
+  const greyInput = document.getElementById('greyOrder');
+  errEl.innerHTML=''; greyInput.classList.remove('bad');
+
+  if(!validGreyOrder(plant, greyOrder)){
+    errEl.innerHTML = `<div class="err">Grey order must be ${greyRangeHint(plant)}.</div>`;
+    greyInput.classList.add('bad'); return;
+  }
+  const giRec = await Storage.get(`${plant}:greyorder-index:${greyOrder}`, false);
+  if(!giRec){
+    errEl.innerHTML = `<div class="err">This grey order hasn't been scanned in "Scan new beam" yet.</div>`;
+    greyInput.classList.add('bad'); return;
+  }
+  let gi; try{ gi = JSON.parse(giRec.value); }catch(e){ gi=null; }
+  if(gi && gi.status === 'cut-pending'){
+    errEl.innerHTML = `<div class="err">This order is already cut and pending a new loom. Duplicate scan not allowed.</div>`;
+    greyInput.classList.add('bad'); return;
+  }
+  const loRec = await Storage.get(`${plant}:looporder:${greyOrder}`, false);
+  let lo; try{ lo = loRec ? JSON.parse(loRec.value) : null; }catch(e){ lo=null; }
+  if(lo && lo.status === 'finished'){
+    errEl.innerHTML = `<div class="err">This order has already been finished. Cutting isn't allowed once an order is finished.</div>`;
+    greyInput.classList.add('bad'); return;
+  }
+  const userId = await requireUser();
+  if(!userId) return;
+
+  if(!cutSession){
+    const cutId = await nextCutId(plant);
+    cutSession = {cutId, seq:1};
+  } else {
+    cutSession.seq += 1;
+  }
+  await Storage.set(`${plant}:activeCutSession`, JSON.stringify(cutSession), false);
+
+  const keepOnFloor = document.getElementById('keepOnFloor')?.checked || false;
+  const entry = {
+    cutId: cutSession.cutId, seq: cutSession.seq, greyOrder,
+    cutFromLoom: gi.loomNo, cutDT: nowStamp(), userId, keepOnFloor
+  };
+  await Storage.set(`${plant}:cutentry:${cutSession.cutId}:${cutSession.seq}`, JSON.stringify(entry), false);
+
+  gi.status = 'cut-pending';
+  await Storage.set(`${plant}:greyorder-index:${greyOrder}`, JSON.stringify(gi), false);
+
+  toast(`Cut · ${cutSession.cutId} seq ${cutSession.seq}`);
+  plantRoutes['weaving/cut-beam/scan-grey-to-cut'](plant);
+}
+
+async function addAnotherCutEntry(){
+  const plant = currentPlant;
+  await plantRoutes['weaving/cut-beam/scan-grey-to-cut'](plant);
+  const g = document.getElementById('greyOrder');
+  if(g){ g.value=''; g.focus(); }
+}
+
+async function nextCutId(plant){
+  const pid = getFirebaseProjectId();
+  if (pid) { const n = await fsNextId(pid, `${plant}:counter:cut`); if (n !== null) return `${plant}-CUT${pad5(n)}`; }
+  const rec = await Storage.get(`${plant}:counter:cut`);
+  const cur = rec ? parseInt(rec.value,10) : 0;
+  const next = cur+1;
+  await Storage.set(`${plant}:counter:cut`, String(next));
+  return `${plant}-CUT${pad5(next)}`;
+}
+
+plantRoutes['weaving/cut-beam/scan-new-loom'] = async function(plant){
+  const active = await Storage.get(`${plant}:activeCutSession`, false);
+  cutSession = (active && active.value) ? JSON.parse(active.value) : null;
+
+  if(!cutSession){
+    shell({
+      title:`${PLANTS[plant].label} · Scan new loom`, back:`plant/${plant}/weaving/cut-beam`,
+      content: emptyState('✂️','Nothing cut yet','Scan a grey order to cut first, then come back here to restart it on a new loom.')
+    });
+    return;
+  }
+
+  shell({
+    title:`${PLANTS[plant].label} · Scan new loom`, back:`plant/${plant}/weaving/cut-beam`, right: await userChip(),
+    content: `
+      <div class="beam-banner">
+        <div>
+          <div class="lbl">Restarting</div>
+          <div class="id">${cutSession.cutId}</div>
+        </div>
+        <div class="seqchip">${cutSession.seq} order${cutSession.seq>1?'s':''}</div>
+      </div>
+      <div class="card">
+        <h3>Scan the new loom</h3>
+        <div class="desc">All ${cutSession.seq} order${cutSession.seq>1?'s':''} cut in ${cutSession.cutId} will restart on this loom.</div>
+
+        <div class="field">
+          <label>Loom no.</label>
+          <div class="field-with-scan">
+            <input id="newLoomNo" class="scan-input" inputmode="numeric" autofocus
+              onkeydown="if(event.key==='Enter'){event.preventDefault(); saveCutRestart();}">
+            <button type="button" class="scan-btn" onclick="openBarcodeScanner('newLoomNo', {onScanned:'saveCutRestart'})" aria-label="Scan loom no.">${SCAN_ICON}</button>
+          </div>
+          <div class="hint">Valid ranges: ${loomRangeHint(plant)}</div>
+          <div id="newLoomNoErr"></div>
+        </div>
+
+        <button class="btn btn-teal" onclick="saveCutRestart()">Restart on this loom</button>
+      </div>`
+  });
+};
+
+async function saveCutRestart(){
+  const plant = currentPlant;
+  const newLoomNo = document.getElementById('newLoomNo').value.trim();
+  const errEl = document.getElementById('newLoomNoErr');
+  const loomInput = document.getElementById('newLoomNo');
+  errEl.innerHTML=''; loomInput.classList.remove('bad');
+
+  if(!validLoomNo(plant, newLoomNo)){
+    errEl.innerHTML = `<div class="err">Loom no. must be ${loomRangeHint(plant)}.</div>`;
+    loomInput.classList.add('bad'); return;
+  }
+  const userId = await requireUser();
+  if(!userId) return;
+  if(!cutSession) return;
+
+  const entries = await loadAll(`${plant}:cutentry:${cutSession.cutId}:`, false);
+  for(const entry of entries){
+    const giRec = await Storage.get(`${plant}:greyorder-index:${entry.greyOrder}`, false);
+    let gi; try{ gi = giRec ? JSON.parse(giRec.value) : null; }catch(e){ gi=null; }
+    if(!gi) continue;
+    const fromLoom = gi.loomNo;
+    gi.loomNo = newLoomNo;
+    gi.status = 'mounted';
+    await Storage.set(`${plant}:greyorder-index:${entry.greyOrder}`, JSON.stringify(gi), false);
+    await Storage.set(`${plant}:relocationlog:${cutSession.cutId}:${entry.greyOrder}`, JSON.stringify({
+      cutId: cutSession.cutId, greyOrder: entry.greyOrder, fromLoom, toLoom: newLoomNo, userId, movedAt: nowStamp()
+    }), false);
+  }
+
+  toast(`Restarted ${entries.length} order${entries.length>1?'s':''} on loom ${newLoomNo}`);
+  await Storage.delete(`${plant}:activeCutSession`, false);
+  cutSession = null;
+  go(`plant/${plant}/weaving`);
+}
+
+/* =========================================================
+   WARPING · A. NEW WARP ORDER SCAN ("scan beam order")
+   ========================================================= */
+plantRoutes['warping/new-warp-order-scan'] = async function(plant){
+  shell({
+    title:`${PLANTS[plant].label} · New warp order scan`, back:`plant/${plant}/warping`, right: await userChip(),
+    content: `
+      <div class="card">
+        <h3>Log a new beam order</h3>
+        <div class="field">
+          <label>Scan beam order</label>
+          <div class="field-with-scan">
+            <input id="warpOrder" class="scan-input" inputmode="numeric" autofocus
+              onkeydown="if(event.key==='Enter'){event.preventDefault(); document.getElementById('machineNo').focus();}">
+            <button type="button" class="scan-btn" onclick="openBarcodeScanner('warpOrder', {advanceTo:'machineNo'})" aria-label="Scan beam order">${SCAN_ICON}</button>
+          </div>
+          <div class="hint">Valid range: ${warpRangeHint(plant)}</div>
+          <div id="warpOrderErr"></div>
+        </div>
+        <div class="field">
+          <label>Warping machine no. <span style="font-weight:400;color:var(--ink-soft)">(optional)</span></label>
+          <input id="machineNo" class="text-input" placeholder="e.g. WM-3">
+        </div>
+        <div class="field">
+          <label>Date & time</label>
+          <div class="dt-row">
+            <input id="warpDT" type="datetime-local" class="text-input" value="${nowStamp()}" disabled>
+            <button id="dtToggle" class="dt-toggle" onclick="toggleDT('warpDT')">Auto</button>
+          </div>
+        </div>
+        <button class="btn btn-teal" onclick="saveWarpOrder()">Save</button>
+      </div>`
+  });
+};
+async function saveWarpOrder(){
+  const plant = currentPlant;
+  const warpOrder = document.getElementById('warpOrder').value.trim();
+  const errEl = document.getElementById('warpOrderErr');
+  const inp = document.getElementById('warpOrder');
+  errEl.innerHTML=''; inp.classList.remove('bad');
+
+  if(!validWarpOrder(plant, warpOrder)){
+    errEl.innerHTML = `<div class="err">Scan beam order must be ${warpRangeHint(plant)}.</div>`;
+    inp.classList.add('bad'); return;
+  }
+  const dupRec = await Storage.get(`${plant}:warporder-index:${warpOrder}`, false);
+  if(dupRec){
+    errEl.innerHTML = `<div class="err">This beam order has already been scanned. Duplicate scan not allowed.</div>`;
+    inp.classList.add('bad'); return;
+  }
+  const userId = await requireUser();
+  if(!userId) return;
+
+  const beamId = await nextWarpId(plant);
+  const rec = {
+    beamId, warpOrder,
+    machineNo: document.getElementById('machineNo').value.trim(),
+    userId, warpDT: document.getElementById('warpDT').value || nowStamp(),
+    status:'on-floor'
+  };
+  await Storage.set(`${plant}:warpbeam:${beamId}`, JSON.stringify(rec), false);
+  await Storage.set(`${plant}:warporder-index:${warpOrder}`, JSON.stringify({warpOrder, beamId}), false);
+  toast(`Saved · ${beamId}`);
+  go(`plant/${plant}/warping`);
+}
+
+/* =========================================================
+   WARPING · B. WARPING PRODUCTION DATA
+   ========================================================= */
+plantRoutes['warping/warping-production-data'] = async function(plant){
+  shell({title:`${PLANTS[plant].label} · Warping production data`, back:`plant/${plant}/warping`, content:`<div id="statArea"></div><div id="sapNote"></div><div id="dataArea-warpprod"></div>`, wide:true});
+  const beams = await loadAll(`${plant}:warpbeam:`, false);
+  beams.forEach(b=>{ b.__sapKey = b.warpOrder; });
+
+  document.getElementById('statArea').innerHTML = beams.length ? `
+    <div class="stat-row">
+      <div class="stat"><div class="n">${beams.length}</div><div class="l">Beam orders</div></div>
+      <div class="stat"><div class="n">${beams.filter(b=>b.status==='on-floor').length}</div><div class="l">On floor</div></div>
+      <div class="stat"><div class="n">${beams.filter(b=>b.status==='mounted').length}</div><div class="l">Mounted</div></div>
+    </div>` : '';
+
+  const sapInfo = await fetchSapSheet(plant, 'beam');
+  const headerMap = buildHeaderMap(sapInfo.headers, 'beam');
+  document.getElementById('sapNote').innerHTML = sapSyncNote(sapInfo, SAP_SHEET_LABEL[plant].beam, headerMap, 'beam');
+  const sapMap = sapMapByOrder(sapInfo.rows, headerMap, 'beam');
+
+  renderReport('dataArea-warpprod', beams, [
+    {key:'beamId', label:'Beam ID', get:r=>r.beamId},
+    {key:'warpOrder', label:'Beam order', get:r=>r.warpOrder},
+    {key:'machineNo', label:'Machine', get:r=>r.machineNo, render:r=>r.machineNo||'—'},
+    {key:'warpDT', label:'Logged', get:r=>r.warpDT, render:r=>fmtDT(r.warpDT), date:true},
+    {key:'userId', label:'User', get:r=>r.userId},
+    {key:'status', label:'Status', get:r=>r.status, render:r=> r.status==='on-floor' ? '<span class="pill pill-open">On floor</span>' : '<span class="pill pill-done">Mounted</span>'},
+    ...sapExtraColumns(sapMap, headerMap, 'beam'),
+  ], {
+    reportKey:'warpprod',
+    defaultSortKey:'beamId', defaultSortDir:'asc',
+    searchPlaceholder:'Search beam ID, beam order, machine, user…',
+    emptyIcon:'🧶', emptyTitle:'No beam orders logged', emptyDesc:'Beams scanned via "New warp order scan" appear here.',
+    deletable:true,
+    onDeleteRows: async (rows)=>{ for(const r of rows){ await deleteByStorageKey(r); } },
+    onDeleted: ()=>plantRoutes['warping/warping-production-data'](plant),
+  });
+};
+
+/* =========================================================
+   WARPING · C. BEAM ON FLOOR
+   ========================================================= */
+plantRoutes['warping/beam-on-floor'] = async function(plant){
+  shell({title:`${PLANTS[plant].label} · Beam on floor`, back:`plant/${plant}/warping`, content:`<div id="sapNote"></div><div id="dataArea-onfloor"></div>`, wide:true});
+  const beams = (await loadAll(`${plant}:warpbeam:`, false)).filter(b=>b.status==='on-floor');
+  beams.forEach(b=>{ b.__sapKey = b.warpOrder; });
+
+  const sapInfo = await fetchSapSheet(plant, 'beam');
+  const headerMap = buildHeaderMap(sapInfo.headers, 'beam');
+  document.getElementById('sapNote').innerHTML = sapSyncNote(sapInfo, SAP_SHEET_LABEL[plant].beam, headerMap, 'beam');
+  const sapMap = sapMapByOrder(sapInfo.rows, headerMap, 'beam');
+
+  renderReport('dataArea-onfloor', beams, [
+    {key:'beamId', label:'Beam ID', get:r=>r.beamId},
+    {key:'warpOrder', label:'Beam order', get:r=>r.warpOrder},
+    {key:'machineNo', label:'Machine', get:r=>r.machineNo, render:r=>r.machineNo||'—'},
+    {key:'warpDT', label:'Logged', get:r=>r.warpDT, render:r=>fmtDT(r.warpDT), date:true},
+    ...sapExtraColumns(sapMap, headerMap, 'beam'),
+    {key:'__action', label:'', get:()=>'', render:r=>`<button class="btn btn-sm btn-outline" onclick="markMounted('${r.beamId}')">Mark mounted</button>`},
+  ], {
+    reportKey:'onfloor',
+    defaultSortKey:'warpOrder', defaultSortDir:'asc',
+    searchPlaceholder:'Search beam ID, beam order, machine…',
+    emptyIcon:'📦', emptyTitle:'Floor is empty', emptyDesc:'Every beam order logged has been marked mounted.',
+    deletable:true,
+    onDeleteRows: async (rows)=>{ for(const r of rows){ await deleteByStorageKey(r); } },
+    onDeleted: ()=>plantRoutes['warping/beam-on-floor'](plant),
+  });
+};
+async function markMounted(beamId){
+  const plant = currentPlant;
+  const rec = await Storage.get(`${plant}:warpbeam:${beamId}`, false);
+  if(!rec) return;
+  let data; try{ data = JSON.parse(rec.value); }catch(e){ return; }
+  data.status = 'mounted';
+  await Storage.set(`${plant}:warpbeam:${beamId}`, JSON.stringify(data), false);
+  toast(`${beamId} marked mounted`);
+  plantRoutes['warping/beam-on-floor'](plant);
+}
+
+/* When a grey order is scanned into a new beam (weaving), check its
+   BeamBatch value (from the linked SAP GREY sheet) against Warping's
+   Beam on Floor list — if a floor beam's Beam order matches, it's now in
+   use on the loom, so auto-mark it mounted. Best-effort: silently does
+   nothing if SAP isn't linked, the BeamBatch column isn't found, or
+   there's no match — the "Mark mounted" button in Beam on floor always
+   remains as the manual fallback. */
+async function tryAutoRemoveFromFloor(plant, greyOrder){
+  try{
+    const sapInfo = await fetchSapSheet(plant, 'grey');
+    if(!sapInfo.linked) return;
+    const headerMap = buildHeaderMap(sapInfo.headers, 'grey');
+    const batchCol = headerMap['BeamBatch'];
+    if(!batchCol) return;
+    const sapMap = sapMapByOrder(sapInfo.rows, headerMap, 'grey');
+    const sapRow = sapMap[normOrderKey(greyOrder)];
+    const beamBatch = sapRow ? sapRow[batchCol] : null;
+    const targetKey = normOrderKey(beamBatch);
+    if(!targetKey) return;
+
+    const warpBeams = await loadAll(`${plant}:warpbeam:`, false);
+    const match = warpBeams.find(b => b.status==='on-floor' && normOrderKey(b.warpOrder)===targetKey);
+    if(match){
+      const { __storageKey, __storageShared, ...clean } = match;
+      clean.status = 'mounted';
+      await Storage.set(__storageKey, JSON.stringify(clean), __storageShared);
+      toast(`Beam order ${match.warpOrder} auto-removed from Beam on floor (BeamBatch match)`);
+    }
+  }catch(e){ /* best-effort only */ }
+}
+
+/* =========================================================
+   INIT
+   ========================================================= */
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js').catch(()=>{ /* fine if unavailable, e.g. opened via file:// */ });
+  });
+}
+render();
+</script>
+</body>
+</html>
