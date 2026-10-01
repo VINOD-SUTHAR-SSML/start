@@ -17,3 +17,12 @@ When two users open **Scan New Beam** at the same time, each one gets their own 
 4. On save: `payload = session.finish()` and send `payload.rows` (each row has `beamId`, `seq`, `rowKey`).
 5. Remove any global `beamId` / `seq` / `counter` variables, and any IDs made only from `Date.now()`.
    Always group and sort saved data by **Beam ID + Seq**, never by timestamp alone.
+
+## Applied to `ssml-weaving-new.html`
+- The in-progress beam is stored per **user + browser tab** (`SAILY:activeBeamSession:<user>:<tab>`), so a second user
+  (other phone, same PC after switching user, or another tab) always starts their own beam with their own seq 1, 2, 3…
+- Without Firebase, beam numbers are **claimed and verified**, so two users pressing Save at the same instant get
+  different `SAILY-BEAM#####` numbers. With Firebase, the existing atomic counter is used as before.
+- Save can't run twice at once (Enter + scanner), and never overwrites an existing beam + seq entry.
+- Unfinished beams from a closed tab are listed with a **Resume** button.
+- Browser test: `NODE_PATH=$(npm root -g) node tests/scan-new-beam.e2e.js`

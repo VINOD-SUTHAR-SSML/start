@@ -1001,11 +1001,42 @@ function warpRangeHint(plant){ const [a,b]=PLANTS[plant].warpRange; return `${a}
 async function nextBeamId(plant){
   const pid = getFirebaseProjectId();
   if (pid) { const n = await fsNextId(pid, `${plant}:counter:beam`); if (n !== null) return `${plant}-BEAM${pad5(n)}`; }
-  const rec = await Storage.get(`${plant}:counter:beam`);
-  const cur = rec ? parseInt(rec.value,10) : 0;
-  const next = cur+1;
-  await Storage.set(`${plant}:counter:beam`, String(next));
-  return `${plant}-BEAM${pad5(next)}`;
+  const n = await claimNextSerial(plant, 'beam');
+  return `${plant}-BEAM${pad5(n)}`;
+}
+
+/* Fallback counter (no Firebase). A plain "read count, write count+1" lets
+   two users who press "Scan new beam" at the same instant both read 5 and
+   both get number 6. So every candidate number is CLAIMED: a claim record
+   with this tab's random token is written, then re-read after a short
+   random wait. If another user's token is there (they claimed it at the
+   same moment), that number is theirs and this user moves on to the next
+   one. Result: same timestamp, still two different beam numbers. */
+function randomToken(){
+  try { const a = new Uint8Array(8); crypto.getRandomValues(a); return Array.from(a, b=>b.toString(16).padStart(2,'0')).join(''); }
+  catch(e){ return Date.now().toString(36) + Math.random().toString(36).slice(2); }
+}
+function sleepMs(ms){ return new Promise(r=>setTimeout(r, ms)); }
+async function claimNextSerial(plant, kind){
+  const counterKey = `${plant}:counter:${kind}`;
+  const token = randomToken();
+  let lastTried = 0;
+  for(let attempt=0; attempt<25; attempt++){
+    const rec = await Storage.get(counterKey);
+    const cur = rec ? (parseInt(rec.value,10) || 0) : 0;
+    const n = Math.max(cur, lastTried) + 1;
+    lastTried = n;
+    const claimKey = `${plant}:claim:${kind}:${n}`;
+    if (await Storage.get(claimKey)) continue;              // already taken
+    await Storage.set(claimKey, JSON.stringify({token, at: new Date().toISOString()}));
+    await Storage.set(counterKey, String(n));
+    await sleepMs(150 + Math.floor(Math.random()*250));    // let a simultaneous claim land
+    const check = await Storage.get(claimKey);
+    let owner = null;
+    try { owner = check ? JSON.parse(check.value).token : null; } catch(e){}
+    if (owner === token) return n;                          // number is ours
+  }
+  throw new Error('Could not allocate a new ' + kind + ' ID, please retry.');
 }
 async function nextWarpId(plant){
   const pid = getFirebaseProjectId();
@@ -2156,11 +2187,83 @@ plantRoutes['warping'] = function(plant){
 /* =========================================================
    A. SCAN NEW BEAM
    ========================================================= */
-let beamSession = null; // {beamId, seq, loomNo}
+/* Each in-progress beam belongs to ONE user in ONE browser tab. The session
+   key carries both, so if USER1 is mid-scan and USER2 opens "Scan new beam"
+   at the same moment (another phone, the same PC after switching user, or a
+   second tab) USER2 starts their own beam with its own seq 1,2,3...; the two
+   sessions never read or bump each other's sequence. */
+let beamSession = null; // {beamId, seq, loomNo, userId}
+let beamSaveBusy = false;
+
+const TAB_ID = (function(){
+  let id = null;
+  try { id = sessionStorage.getItem('ssml_tab_id'); } catch(e){}
+  if(!id){ id = randomToken(); try { sessionStorage.setItem('ssml_tab_id', id); } catch(e){} }
+  // A duplicated tab copies sessionStorage; if another open tab already uses
+  // this id, take a fresh one so the two tabs keep separate beams.
+  try {
+    const ch = new BroadcastChannel('ssml-tab-id');
+    let mine = id;
+    ch.onmessage = ev=>{
+      const m = ev.data || {};
+      if(m.q === mine) ch.postMessage({taken: mine});
+      else if(m.taken === mine && !TAB_ID.__settled){
+        mine = randomToken();
+        try { sessionStorage.setItem('ssml_tab_id', mine); } catch(e){}
+        TAB_ID.value = mine;
+      }
+    };
+    ch.postMessage({q: mine});
+    setTimeout(()=>{ TAB_ID.__settled = true; }, 1000);
+  } catch(e){}
+  return { value: id };
+})();
+
+function beamSessionPrefix(plant, userId){ return `${plant}:activeBeamSession:${userId || '-'}:`; }
+function beamSessionKey(plant, userId){ return beamSessionPrefix(plant, userId) + TAB_ID.value; }
+
+async function loadBeamSession(plant, userId){
+  const rec = await Storage.get(beamSessionKey(plant, userId), false);
+  if(rec && rec.value){ try { return JSON.parse(rec.value); } catch(e){} }
+  // one-time migration of the old single per-device session key
+  const legacy = await Storage.get(`${plant}:activeBeamSession`, false);
+  if(legacy && legacy.value && userId){
+    let s = null; try { s = JSON.parse(legacy.value); } catch(e){}
+    await Storage.delete(`${plant}:activeBeamSession`, false);
+    if(s){ s.userId = userId; await Storage.set(beamSessionKey(plant, userId), JSON.stringify(s), false); return s; }
+  }
+  return null;
+}
+
+/* This user's unfinished beams left in other tabs (e.g. a closed tab). */
+async function otherBeamSessions(plant, userId){
+  if(!userId) return [];
+  const prefix = beamSessionPrefix(plant, userId);
+  const mine = beamSessionKey(plant, userId);
+  const res = await Storage.list(prefix, false);
+  const keys = ((res && res.keys) || []).filter(k=>k !== mine);
+  const out = [];
+  for(const k of keys){
+    const r = await Storage.get(k, false);
+    if(r && r.value){ try { out.push({key:k, s:JSON.parse(r.value)}); } catch(e){} }
+  }
+  return out;
+}
+
+async function resumeBeamSession(fromKey){
+  const plant = currentPlant;
+  const userId = await getUser();
+  const r = await Storage.get(fromKey, false);
+  if(!r || !r.value){ toast('That beam is no longer open', true); return plantRoutes['weaving/scan-new-beam'](plant); }
+  await Storage.set(beamSessionKey(plant, userId), r.value, false);
+  await Storage.delete(fromKey, false);
+  plantRoutes['weaving/scan-new-beam'](plant);
+}
 
 plantRoutes['weaving/scan-new-beam'] = async function(plant){
-  const active = await Storage.get(`${plant}:activeBeamSession`, false);
-  beamSession = (active && active.value) ? JSON.parse(active.value) : null;
+  const currentUserId = await getUser();
+  beamSession = await loadBeamSession(plant, currentUserId);
+  const resumable = beamSession ? [] : await otherBeamSessions(plant, currentUserId);
 
   const bannerHtml = beamSession ? `
     <div class="beam-banner">
@@ -2216,6 +2319,17 @@ plantRoutes['weaving/scan-new-beam'] = async function(plant){
         <button class="btn btn-primary" onclick="saveBeamEntry()">Save</button>
       </div>
 
+      ${resumable.length ? `
+      <div class="card" style="margin-top:14px;">
+        <h3 style="margin-bottom:6px;">Your unfinished beams</h3>
+        <div class="desc">Open in another tab or left from an earlier visit. Resume only if that tab is closed.</div>
+        ${resumable.map(o=>`
+        <div class="entry-row">
+          <div class="l">${o.s.beamId} · Loom ${o.s.loomNo} · seq ${o.s.seq}</div>
+          <div class="r"><button class="btn btn-outline" onclick='resumeBeamSession(${JSON.stringify(o.key).replace(/'/g,"&#39;")})'>Resume</button></div>
+        </div>`).join('')}
+      </div>` : ''}
+
       ${beamSession ? `
       <div class="btn-row">
         <button class="btn btn-outline" onclick="addAnotherBeamEntry()">Add knotting beam / order</button>
@@ -2246,6 +2360,15 @@ async function refreshBeamEntryList(plant){
 }
 
 async function saveBeamEntry(){
+  // Enter key + scanner callback can fire together: run one save at a time.
+  if(beamSaveBusy) return;
+  beamSaveBusy = true;
+  try { await saveBeamEntryInner(); }
+  catch(e){ toast(e && e.message ? e.message : 'Save failed, please retry', true); }
+  finally { beamSaveBusy = false; }
+}
+
+async function saveBeamEntryInner(){
   const plant = currentPlant;
   const loomNo = beamSession ? beamSession.loomNo : document.getElementById('loomNo').value.trim();
   const greyOrder = document.getElementById('greyOrder').value.trim();
@@ -2283,13 +2406,26 @@ async function saveBeamEntry(){
   if(!userId) ok=false;
   if(!ok) return;
 
+  if(beamSession){
+    // Another user signed in on this device, or this beam was resumed in
+    // another tab: never add to a beam that isn't this user's/tab's.
+    const stillMine = beamSession.userId === userId &&
+      !!(await Storage.get(beamSessionKey(plant, userId), false));
+    if(!stillMine){
+      toast(`${beamSession.beamId} is not your open beam here — screen refreshed`, true);
+      return plantRoutes['weaving/scan-new-beam'](plant);
+    }
+  }
+
   if(!beamSession){
     const beamId = await nextBeamId(plant);
-    beamSession = {beamId, seq:1, loomNo};
+    beamSession = {beamId, seq:1, loomNo, userId};
   } else {
     beamSession.seq += 1;
   }
-  await Storage.set(`${plant}:activeBeamSession`, JSON.stringify(beamSession), false);
+  // never overwrite an entry already saved under this beam + seq
+  while(await Storage.get(`${plant}:beamentry:${beamSession.beamId}:${beamSession.seq}`, false)) beamSession.seq += 1;
+  await Storage.set(beamSessionKey(plant, userId), JSON.stringify(beamSession), false);
 
   const mountDT = document.getElementById('mountDT').value || nowStamp();
   const entry = {
@@ -2317,7 +2453,7 @@ async function completeBeamScan(){
   const plant = currentPlant;
   if(!beamSession) return;
   await Storage.set(`${plant}:beam-complete:${beamSession.beamId}`, JSON.stringify({beamId:beamSession.beamId, entries:beamSession.seq, completedAt: nowStamp()}), false);
-  await Storage.delete(`${plant}:activeBeamSession`, false);
+  await Storage.delete(beamSessionKey(plant, beamSession.userId || await getUser()), false);
   beamSession = null;
   toast('Beam scan complete');
   go(`plant/${plant}/weaving`);
